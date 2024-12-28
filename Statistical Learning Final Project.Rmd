@@ -1,0 +1,2973 @@
+---
+title: 'Predictive Marketing Analytics: Statistical Insights for Business Success'
+subtitle: 'MATH 40028/50028: Statistical Learning'
+date: "May 05, 2024"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+fontfamily: mathpazo
+fontsize: 11pt
+header-includes: \linespread{1.05}
+urlcolor: blue
+---
+
+## **Introduction**
+
+Understanding customer behavior and predicting subscription patterns is paramount for financial institutions striving to optimize marketing strategies. By leveraging insights derived from past interactions, institutions can tailor their approaches effectively, thereby maximizing subscription rates and fostering long-term customer relationships.
+
+
+#### **Analyzing Telemarketing Campaign Data**
+
+The 'Marketing_data.csv' dataset, akin to bank.csv sourced from the UCI Machine Learning Repository, provides a comprehensive snapshot of customer interactions derived from telemarketing campaigns conducted by a Portuguese bank. With 11,162 observations and a diverse array of features, this dataset offers a rich repository of information crucial for understanding customer preferences and behaviors.
+
+**Dataset Composition and Focus**
+
+The dataset comprises 17 features, including target variables, demographic, financial, and campaign-specific variables, each offering valuable insights into customer engagement and subscription tendencies. The primary focus lies on the binary 'deposit' variable, indicating whether individuals subscribed to term deposits post-engagement with the bank's telemarketing efforts.
+
+#### **Sampling Strategy and Potential Biases**
+
+The dataset comprises records from past campaigns, suggesting a target population of individuals contacted by the financial institution for marketing purposes. Sampling involves selecting 10% of examples from the larger dataset, ensuring representation while reducing computational load. However, the specifics of the sampling methodology are not provided, potentially introducing sampling bias.
+
+**Addressing Bias and Limitations**
+
+Various biases may arise, including selection bias from individuals responding to telemarketing calls and temporal bias due to the dataset's chronological order. Additionally, self-reporting or response bias could impact data accuracy, influencing the dataset's reliability.
+
+Despite potential biases, the dataset offers valuable insights into client behavior and campaign performance. Analyzing relationships between client attributes and subscription outcomes enables the derivation of actionable insights to optimize future marketing strategies.
+
+
+####  **Prediction Problem**:
+
+The prediction problem is to develop the best classification model that predicts whether a customer will subscribe to a term deposit ('yes' or 'no') based on input features based like demographic, financial, and campaign-specific attributes.
+
+#### **Data Partitioning and Evaluation Strategy**
+
+The dataset will be split into 70% training and 30% test sets to ensure independence and prevent data leakage. This division precedes Exploratory Data Analysis (EDA) to maintain analysis integrity. Training data will inform machine learning models, while test data will assess model generalizability. Techniques like k-fold cross-validation and Bootstrapping will ensure accurate performance assessment using metrics such as Accuracy, Precision, Recall, F1 Score, and ROC-AUC, ensuring reliable predictive models for real-world applications.
+
+## **Statistical learning strategies and methods** 
+
+**Data Cleaning**: Upon inspection, no missing values and duplicates were found in the dataset, indicating data integrity. 
+
+**Data Preprocessing**: A new feature, 'age_group,' categorizes clients into age groups ('Under 25', '25-39', '40-59', '60+'). 'month_part' segments the last contact day into 'start', 'middle', and 'end'. Interaction effects between "pdays" and "duration" were leveraged to create a new feature, capturing combined influence on customer engagement dynamics and deposit behavior. Categorical variables were converted into factors for improved modeling and analysis.
+
+**Exploratory Data Analysis (EDA)** : Exploratory Data Analysis was performed on the training set to gain insights into the data distribution and correlations between features. Summary statistics are calculated for numerical variables, and graphical visualizations are created to visualize distributions and relationships. This helped in understanding the data characteristics and selecting appropriate features for modeling.
+
+**Correlation Analysis**:
+Correlation analysis was conducted to examine relationships between numerical variables and identify potential predictors of client deposit behavior. The resulting correlation plot provided insights into the strength and direction of associations among variables.
+
+**Chi-square Test**:
+Chi-square tests were employed to assess the association between categorical variables (e.g., job, marital status, education) and deposit outcomes. 
+
+**Feature Selection**
+The feature selection process involved logistic Lasso regression and random forest variable importance analysis. Lasso regression identified relevant predictors such as job type, housing status, and campaign-related variables. Random forest highlighted 'duration' as most influential, followed by 'month', 'age', and 'balance', providing valuable insights into deposit decision drivers. These methods collectively enhance model interpretability and inform marketing strategies.
+
+
+```{r include=FALSE, warning=FALSE, message=FALSE}
+## IMPORTING NECESSARY LIBRARIES
+
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(corrplot)
+library(glmnet)
+library(gridExtra)
+library(gmodels)
+library(randomForest)
+library(cowplot)
+library(caret)
+library(rsample)
+library(pROC)
+library(boot)
+library(e1071)
+library(ROCR)
+library(kernlab)
+library(class)
+library(reshape2)
+library(MASS)  
+library(xgboost)
+library(rpart)
+library(gbm)
+
+
+
+## Pre-processing
+# Load the dataset
+marketing_data = read_csv("C:\\Users\\chand\\Downloads\\bank.csv")
+
+marketing_data
+
+head(marketing_data)
+
+dim(marketing_data)
+
+str(marketing_data)
+
+sum(is.na(marketing_data))
+
+names(marketing_data)
+
+
+# Check for duplicates in the dataset
+duplicates <- sum(duplicated(marketing_data)); duplicates
+
+##Feature Engineering
+
+# Create interaction features
+# Calculate interaction term between duration and pdays
+marketing_data$duration_pdays_interaction <- marketing_data$duration * marketing_data$pdays
+
+marketing_data$age_group <- cut(marketing_data$age, breaks = c(0, 25, 40, 60, Inf), labels = c("Under 25", "25-39", "40-59", "60+"))
+
+# Create a new variable 'month_part' based on the day of the month
+marketing_data$month_part <- cut(marketing_data$day, breaks = c(0, 10, 20, 31), labels = c("start", "middle", "end"))
+
+
+marketing_data <- marketing_data[, -which(names(marketing_data) == "age")]
+marketing_data <- marketing_data[, -which(names(marketing_data) == "day")]
+
+
+# Convert categorical variables to factors
+categorical_vars <- c('job', 'marital', 'education', 'default', 'housing', 'loan', 'contact', 'month', 'poutcome', 'deposit')
+
+for (var in categorical_vars) {
+  marketing_data[[var]] <- as.factor(marketing_data[[var]])
+}
+
+
+# Summary statistics
+summary(marketing_data)
+
+# Data partitioning before EDA
+# Set seed for reproducibility
+set.seed(42)
+
+# Determine the size of the training set (e.g., 70% of the data)
+train_size <- 0.7
+
+# Generate random indices for the training set
+train_indices <- sample(1:nrow(marketing_data), size = round(train_size * nrow(marketing_data)))
+
+# Create the training set
+train_data <- marketing_data[train_indices, ]
+
+# Create the test set (exclude indices used in the training set)
+test_data <- marketing_data[-train_indices, ]
+
+
+
+```
+
+
+### **Exploratory Data Analysis**
+
+
+#### **Distribution of term deposits - Target Variable**
+
+
+```{r echo=FALSE}
+# Distribution of the Target Variable - "deposit".
+# Calculate counts and percentages for the "deposit" variable
+deposit_counts <- train_data %>%
+  count(deposit) %>%
+  mutate(percent = prop.table(n) * 100)
+
+# Plot distribution of "deposit" variable with percentages
+ggplot(deposit_counts, aes(x = factor(deposit), y = percent, fill = factor(deposit))) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(round(percent, 1), "%")), position = position_stack(vjust = 0.5)) +
+  labs(title = "Deposit Subscription Distribution with Percentages", x = "Deposit Subscription", y = "Percentage") +
+  scale_y_continuous(labels = function(x) paste0(x, "%"))+
+  theme_minimal()
+
+
+```
+
+The graph depicts the distribution of the "deposit" variable in the training dataset. The majority of clients (52.7%) did not subscribe to a term deposit, while 47.3% did. This indicates a relatively balanced distribution.
+
+
+
+#### **Visualizing Numerical(Histograms) and Categorical Variables(Bar Plots)**
+
+
+```{r echo=FALSE}
+
+# Univariate Analysis of Numerical Variables
+
+# Define numeric variables
+numeric_vars <- c('balance', 'duration', 'campaign', 'pdays', 'previous', 'duration_pdays_interaction')
+
+# Create an empty list to store ggplot objects
+num_plot_list <- list()
+
+# Loop through numeric variables and create ggplot objects
+for (var in numeric_vars) {
+  num_plot_list[[var]] <- ggplot(train_data, aes(x = !!sym(var))) + 
+    geom_histogram(binwidth = 10, fill = "skyblue", color = "black") +
+    labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+    theme_minimal()
+}
+
+
+# Arrange plots for numeric variables in a grid layout
+
+# Create the grid of histograms
+num_grid <- plot_grid(plotlist = num_plot_list, ncol = 2)
+
+# Visualize the grid of histograms
+print(num_grid)
+
+```
+
+
+```{r echo=FALSE}
+categorical_vars <- c('job', 'marital', 'education', 'default', 'housing', 'loan', 'contact', 'month', 'poutcome', 'age_group', 'month_part')
+
+
+# Create an empty list to store ggplot objects for categorical variables
+cat_plot_list <- list()
+
+# Loop through categorical variables and create ggplot objects
+for (var in categorical_vars) {
+  cat_plot_list[[var]] <- ggplot(train_data, aes(x = !!sym(var))) + 
+    geom_bar(fill = "skyblue", color = "black") +
+    labs(title = paste("Bar plot of", var), x = var, y = "Count") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+
+# Arrange plots for categorical variables in a grid layout
+cat_grid <- plot_grid(plotlist = cat_plot_list, ncol = 4)
+
+# Visualize the grid of categorical plots
+print(cat_grid)
+
+
+```
+
+
+**Findings from Visualizations:**
+
+Analysis of numerical and categorical variables uncovers key insights into client demographics and behavior. "Balance" skews lower for most clients but with notable outliers having higher balances. "Duration" and "campaign" skew right, indicating shorter interactions and fewer contacts for most, with some outliers representing longer durations and higher contact frequencies. "Pdays" is heavily right-skewed, suggesting recent contact for many but with outliers indicating longer gaps since last contact. "Previous" distribution is right-skewed, indicating fewer previous contacts for most but some outliers with higher frequencies. Contact occurs consistently throughout the month, with a peak during the middle phase. Clients are balanced across age groups, with significant representation in 25-39 and 40-59 brackets. Common occupations include management, blue-collar, and technician roles. Most clients are married, followed by singles and divorced individuals, with varying education levels. Few defaults or personal loans are present, but housing loans are common. Cellular phones are the primary contact method. Previous campaign outcomes vary, with a significant portion categorized as "unknown." Monthly contact patterns peak in May, followed by August and July. "Duration_pdays_interaction" shows significant skewness, suggesting potential outliers. These insights are crucial for refining marketing strategies and improving campaign effectiveness.
+
+#### **Demographic Insights and Seasonal Trends in Deposit Subscription Behavior**
+
+
+```{r echo=FALSE, warning=FALSE}
+# Cross-tabulation of job and deposit
+job_deposit_tab <- table(train_data$job, train_data$deposit)
+
+# Plot cross-tabulation
+a = ggplot(data = as.data.frame(job_deposit_tab), aes(x = Var1, y = Freq, fill = Var2)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Deposit Subscription by Job",
+       x = "Job",
+       y = "Count",
+       fill = "Deposit Subscription") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Bar plot for Marital Status vs. Deposit
+marital_deposit_percentages <- train_data %>%
+  group_by(marital, deposit) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Plotting
+b = ggplot(marital_deposit_percentages, aes(x = deposit, y = percentage, fill = deposit)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  geom_text(aes(label = paste0(round(percentage, 2), "%")), 
+            position = position_identity(), 
+            size = 3, 
+            vjust = -0.5, 
+            color = "black") +
+  facet_wrap(~ marital) +
+  labs(title = "Deposit Subscription by Marital Status",
+       x = "Deposit Subscription",
+       y = "Percentage",
+       fill = "Deposit Subscription") +
+  theme_minimal()
+
+
+# Bar plot for Education vs. Deposit
+education_deposit_percentages <- train_data %>%
+  group_by(education, deposit) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Plotting
+c = ggplot(education_deposit_percentages, aes(x = deposit, y = percentage, fill = deposit)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  geom_text(aes(label = paste0(round(percentage, 2), "%")), 
+            position = position_identity(), 
+            size = 3, 
+            vjust = -0.5, 
+            color = "black") +
+  facet_wrap(~ education) +
+  labs(title = "Deposit Subscription by Education",
+       x = "Deposit Subscription",
+       y = "Percentage",
+       fill = "Deposit Subscription") +
+  theme_minimal()
+
+# Bar plot for Default vs. Deposit
+default_deposit_percentages <- train_data %>%
+  group_by(default, deposit) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Plotting
+d = ggplot(default_deposit_percentages, aes(x = deposit, y = percentage, fill = deposit)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  geom_text(aes(label = paste0(round(percentage, 2), "%")), 
+            position = position_identity(), 
+            size = 3, 
+            vjust = -0.5, 
+            color = "black") +
+  facet_wrap(~ default) +
+  labs(title = "Deposit Subscription by Default Status",
+       x = "Deposit Subscription",
+       y = "Percentage",
+       fill = "Deposit Subscription") +
+  theme_minimal()
+
+grid = grid.arrange(a, b, c, d, ncol = 2)
+
+```
+
+```{r echo=FALSE, warning=FALSE}
+
+
+# Bar plot for Housing vs. Deposit
+housing_deposit_percentages <- train_data %>%
+  group_by(housing, deposit) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Plotting
+e = ggplot(housing_deposit_percentages, aes(x = deposit, y = percentage, fill = deposit)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  geom_text(aes(label = paste0(round(percentage, 2), "%")), 
+            position = position_identity(), 
+            size = 3, 
+            vjust = -0.5, 
+            color = "black") +
+  facet_wrap(~ housing) +
+  labs(title = "Deposit Subscription by Housing Status",
+       x = "Deposit Subscription",
+       y = "Percentage",
+       fill = "Deposit Subscription") +
+  theme_minimal()
+
+
+# Bar plot for Loan vs. Deposit
+loan_deposit_percentages <- train_data %>%
+  group_by(loan, deposit) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Plotting
+f = ggplot(loan_deposit_percentages, aes(x = deposit, y = percentage, fill = deposit)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  geom_text(aes(label = paste0(round(percentage, 2), "%")), 
+            position = position_identity(), 
+            size = 3, 
+            vjust = -0.5, 
+            color = "black") +
+  facet_wrap(~ loan) +
+  labs(title = "Deposit Subscription by Loan Status",
+       x = "Deposit Subscription",
+       y = "Percentage",
+       fill = "Deposit Subscription") +
+  theme_minimal()
+
+# Bar plot for Contact vs. Deposit
+contact_deposit_percentages <- train_data %>%
+  group_by(contact, deposit) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Plotting
+g = ggplot(contact_deposit_percentages, aes(x = deposit, y = percentage, fill = deposit)) +
+  geom_bar(stat = "identity", position = "identity", color = "black") +
+  geom_text(aes(label = paste0(round(percentage, 2), "%")), 
+            position = position_identity(), 
+            size = 3, 
+            vjust = -0.5, 
+            color = "black") +
+  facet_wrap(~ contact) +
+  labs(title = "Deposit Subscription by Contact Method",
+       x = "Deposit Subscription",
+       y = "Percentage",
+       fill = "Deposit Subscription") +
+  theme_minimal()
+
+# Calculate counts and percentages for deposit subscription by age group
+deposit_by_age_counts <- train_data %>%
+  count(age_group, deposit) %>%
+  group_by(age_group) %>%
+  mutate(percent = prop.table(n) * 100)
+
+# Plot distribution of deposit subscription by age group with percentages
+h = ggplot(deposit_by_age_counts, aes(x = age_group, y = percent, fill = deposit)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Grouped bar plot
+  geom_text(aes(label = paste0(round(percent, 2), "%")), position = position_dodge(width = 0.9), vjust = -0.5) +  # Add percentage labels above bars
+  labs(title = "Deposit Subscription by Age Group",
+       x = "Age Group",
+       y = "Percentage",
+       fill = "Deposit Subscription") +
+  scale_y_continuous(labels = function(x) paste0(x, "%")) +  # Format y-axis labels as percentages
+  theme_minimal()
+
+grid2 = grid.arrange(e, f, g, h, ncol = 2)
+
+```
+
+```{r echo=FALSE, warning=FALSE}
+
+# Bar plot for Month vs. Deposit
+month_deposit_percentages <- train_data %>%
+  group_by(month, deposit) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(percentage = count / sum(count) * 100)
+# Plotting
+i = ggplot(month_deposit_percentages, aes(x = deposit, y = percentage, fill = month)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black") +
+  geom_text(aes(label = paste0(round(percentage, 2), "%")), 
+            position = position_dodge(width = 0.9), 
+            size = 3, 
+            vjust = -0.5, 
+            color = "black") +
+  labs(title = "Deposit Subscription by Month",
+       x = "Deposit Subscription",
+       y = "Percentage",
+       fill = "Month") +
+  theme_minimal()
+
+
+# Bar plot for poutcome vs. Deposit
+poutcome_deposit_percentages <- train_data %>%
+  group_by(poutcome, deposit) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Plotting
+j = ggplot(poutcome_deposit_percentages, aes(x = deposit, y = percentage, fill = poutcome)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black") +
+  geom_text(aes(label = paste0(round(percentage, 2), "%")), 
+            position = position_dodge(width = 0.9), 
+            size = 3, 
+            vjust = -0.5, 
+            color = "black") +
+  labs(title = "Deposit Subscription by Previous Outcome",
+       x = "Deposit Subscription",
+       y = "Percentage",
+       fill = "Previous Outcome") +
+  theme_minimal()
+
+
+
+grid3 = grid.arrange(i, j, ncol = 2)
+
+```
+
+```{r echo=FALSE, warning=FALSE}
+# Group by 'month_part' and 'deposit', calculate counts and percentages
+month_part_deposit_percentages <- marketing_data %>%
+  group_by(month_part, deposit) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# Plotting
+ggplot(month_part_deposit_percentages, aes(x = month_part, y = percentage, fill = deposit)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label = paste0(round(percentage, 2), "%")), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.5, 
+            size = 3, 
+            color = "black") +
+  labs(title = "Deposit Subscription by Month Part",
+       x = "Month Part",
+       y = "Percentage",
+       fill = "Deposit Subscription") +
+  theme_minimal()
+```
+
+
+####**Key Insights:**
+
+The analysis highlights diverse subscription patterns across demographic factors. Management and Technician roles show balanced outcomes, while Blue-collar and Services display lower subscription rates. Retired and Student categories exhibit higher subscription rates. Married individuals have the highest non-subscription proportion, followed by singles and divorced individuals. Tertiary-educated clients show the highest subscription rate, while those with unknown education levels show the lowest. Clients with no defaults have higher subscription rates, while those with defaults subscribe less. Those without housing or personal loans are more likely to subscribe. Cellular communication leads to higher subscription rates compared to other contact methods. Older clients are more likely to subscribe, with March, December, and October showing peak subscription rates. Previous successful outcomes positively influence deposit subscriptions. Contacts made during the middle of the month have higher subscription rates. These insights emphasize the significance of client characteristics and campaign timing in deposit subscription behavior.
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+##Logarithmic transformation for variables with Outliers
+
+
+# Selecting specified numerical variables for visualization
+selected_variables <- c("duration", "previous", "balance", "pdays", "campaign", "duration_pdays_interaction")
+
+# Subset the data for selected variables and deposit
+selected_data <- train_data[, c(selected_variables, "deposit")]
+
+
+# Melt the data for boxplot
+selected_data_long <- melt(selected_data, id.vars = "deposit")
+
+# Apply logarithmic transformation to selected variables excluding "day"
+constant <- 1
+selected_data_log <- selected_data %>%
+  mutate_at(vars( -deposit), ~log(. + constant))
+
+# Melt the transformed data for boxplot
+selected_data_log_long <- melt(selected_data_log, id.vars = "deposit")
+
+# Plotting boxplots for each transformed variable with respect to deposit
+ggplot(selected_data_log_long, aes(x = variable, y = value, fill = deposit)) +
+  geom_boxplot() +
+  labs(title = "Boxplot of Numerical Variables by Deposit Status", x = "Variables", y = "Values") +
+  facet_wrap(~ variable, scales = "free") +
+  theme_minimal()
+
+
+
+```
+
+Deposit interactions show longer durations and more previous contacts compared to non-deposit interactions, indicating sustained engagement. Those making deposits also tend to have higher median balances, hinting at a link between financial stability and deposit likelihood. Additionally, deposit interactions have longer gaps between contacts and a unique interaction effect between contact duration and days since the last contact, suggesting timing and engagement intensity play key roles in predicting deposit outcomes. These findings highlight the significance of consistent outreach efforts and financial stability in encouraging deposit behavior.
+
+
+```{r include=FALSE, echo=FALSE, eval=FALSE}
+# Selecting specified numerical variables for visualization
+selected_variables <- c("duration", "previous", "balance", "pdays", "campaign", "duration_pdays_interaction")
+
+# Subset the data for selected variables and deposit
+selected_data <- train_data[, c(selected_variables, "deposit")]
+
+
+# Calculate summary statistics for selected numerical variables
+summary_stats <- selected_data %>%
+  group_by(deposit) %>%
+  summarize(
+    mean_duration = mean(duration),
+    mean_previous = mean(previous),
+    mean_balance = mean(balance),
+    mean_pdays = mean(pdays),
+    mean_campaign = mean(campaign),
+    mean_duration_pdays_interaction = mean(duration_pdays_interaction), # Added interaction term mean
+    median_duration = median(duration),
+    median_previous = median(previous),
+    median_balance = median(balance),
+    median_pdays = median(pdays),
+    median_campaign = median(campaign),
+    median_duration_pdays_interaction = median(duration_pdays_interaction), # Added interaction term median
+    q1_duration = quantile(duration, 0.25),
+    q1_previous = quantile(previous, 0.25),
+    q1_balance = quantile(balance, 0.25),
+    q1_pdays = quantile(pdays, 0.25),
+    q1_campaign = quantile(campaign, 0.25),
+    q1_duration_pdays_interaction = quantile(duration_pdays_interaction, 0.25), # Added interaction term q1
+    q3_duration = quantile(duration, 0.75),
+    q3_previous = quantile(previous, 0.75),
+    q3_balance = quantile(balance, 0.75),
+    q3_pdays = quantile(pdays, 0.75),
+    q3_campaign = quantile(campaign, 0.75),
+    q3_duration_pdays_interaction = quantile(duration_pdays_interaction, 0.75) # Added interaction term q3
+  )
+
+# Print the summary statistics
+print(summary_stats)
+
+
+```
+
+
+#### **Correlation Analysis for Deposit Prediction**
+
+```{r echo=FALSE}
+## Correlation
+# Select numeric variables
+numeric_vars <- c('balance', 'duration', 'campaign', 'pdays', 'previous')
+
+# Subset the data to include only numeric variables
+numeric_data <- train_data[numeric_vars]
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(numeric_data)
+
+# Print the correlation matrix
+#print(correlation_matrix)
+
+# Plot the correlation matrix using corrplot
+corrplot(correlation_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45, addCoef.col = "black")
+
+
+```
+
+
+The correlation analysis provides insights into the interrelationships among various variables in the dataset. Notably, there are weak correlations observed between most pairs of variables, indicating that they tend to vary independently of each other. This suggests that factors such as account balance, duration of last contact, number of contacts during the campaign, days since the last contact from a previous campaign, and number of previous contacts do not strongly influence each other. However it reveals moderate positive correlation (0.497) between "pdays" (days since last contact) and "previous" (number of previous contacts), indicating clients contacted frequently in the past tend to have longer intervals between contacts. Additionally, a weak negative correlation (-0.105) exists between "pdays" and "campaign" (number of contacts in current campaign), suggesting recently contacted clients require fewer contacts.
+
+#### **Chi-Square Tests for Categorical Variables with the target variable -  "deposit".**
+
+```{r echo=FALSE}
+# Perform chi-square test for job
+job_cross_tab <- table(train_data$job, train_data$deposit)
+job_chi_square <- chisq.test(job_cross_tab)
+
+# Perform chi-square test for marital
+marital_cross_tab <- table(train_data$marital, train_data$deposit)
+marital_chi_square <- chisq.test(marital_cross_tab)
+
+# Perform chi-square test for education
+education_cross_tab <- table(train_data$education, train_data$deposit)
+education_chi_square <- chisq.test(education_cross_tab)
+
+
+# Perform chi-square test for default
+default_cross_tab <- table(train_data$default, train_data$deposit)
+default_chi_square <- chisq.test(default_cross_tab)
+
+
+# Perform chi-square test for housing
+housing_cross_tab <- table(train_data$housing, train_data$deposit)
+housing_chi_square <- chisq.test(housing_cross_tab)
+
+# Perform chi-square test for loan
+loan_cross_tab <- table(train_data$loan, train_data$deposit)
+loan_chi_square <- chisq.test(loan_cross_tab)
+
+# Perform chi-square test for contact
+contact_cross_tab <- table(train_data$contact, train_data$deposit)
+contact_chi_square <- chisq.test(contact_cross_tab)
+
+
+# Perform chi-square test for month
+month_cross_tab <- table(train_data$month, train_data$deposit)
+month_chi_square <- chisq.test(month_cross_tab)
+
+# Perform chi-square test for poutcome
+poutcome_cross_tab <- table(train_data$poutcome, train_data$deposit)
+poutcome_chi_square <- chisq.test(poutcome_cross_tab)
+
+# Perform chi-square test for age_group
+age_cross_tab <- table(train_data$age_group, train_data$deposit)
+age_chi_square <- chisq.test(age_cross_tab)
+
+# Perform chi-square test for month_part
+month_part_cross_tab <- table(train_data$month_part, train_data$deposit)
+month_part_chi_square <- chisq.test(month_part_cross_tab)
+
+# Print the results
+print(job_chi_square)
+print(marital_chi_square)
+print(education_chi_square)
+print(default_chi_square)
+print(housing_chi_square)
+print(loan_chi_square)
+print(contact_chi_square)
+print(month_chi_square)
+print(poutcome_chi_square)
+print(age_chi_square)
+print(month_part_chi_square)
+
+```
+
+The results of Pearson's Chi-squared tests reveal crucial insights into the relationship between various categorical variables and deposit subscription status. Each variable examined demonstrates a significant association with the decision to subscribe to a deposit, highlighting the diverse factors influencing clients' financial choices. Age Groups, Job categories, marital status, and education levels all exhibit distinct patterns, suggesting that demographic factors play a pivotal role in deposit decisions. Additionally, the presence of default status, housing loans, and personal loans significantly impacts subscription rates, reflecting the influence of financial circumstances. Moreover, the choice of contact method, timing of outreach, days of a month and outcomes of previous campaigns emerge as key determinants, underscoring the importance of effective marketing strategies in promoting deposit subscriptions. In summary, these findings provide valuable insights for banking professionals, emphasizing the multifaceted nature of client behavior and the need for tailored approaches to attract deposit subscriptions.
+
+
+
+#### **Statistical Learning Methods and Term Deposit Prediction: Applicability Analysis**
+
+Exploring the nuanced applicability of statistical learning methods to predicting term deposit subscriptions is crucial for informed decision-making in banking and finance. The below are the methods employed in this predictive analysis.
+
+**Random Forest**:
+Random forest is a robust ensemble learning method that is well-suited for the prediction problem of classifying term deposit subscriptions. This method combines multiple decision trees to make predictions, effectively capturing non-linear relationships and interactions between demographic, financial, and campaign-specific attributes. Random forest can handle both numerical and categorical data, making it suitable for diverse datasets. Moreover, random forest is less sensitive to outliers and does not require feature scaling, simplifying the preprocessing steps. By leveraging the predictive capabilities of multiple decision trees, random forest can provide accurate predictions of term deposit subscriptions while reducing the risk of overfitting. Therefore, random forest is a powerful tool for addressing the prediction problem at hand.
+
+**Support Vector Machines (SVM)**:
+Support Vector Machines (SVM) offer a versatile approach for the prediction problem of term deposit subscription classification. SVMs aim to find the optimal hyperplane that separates classes within the feature space, making them effective for both linear and non-linear classification tasks. In the context of predicting term deposit subscriptions, SVMs can capture complex relationships between demographic, financial, and campaign-specific attributes and the likelihood of subscription. This method is particularly useful when there is a clear margin of separation between subscribing and non-subscribing customers. Additionally, SVMs can handle high-dimensional data and non-linear relationships through the use of kernel functions, providing flexibility in modeling various aspects of the prediction problem.
+
+**Logistic Regression**:
+Logistic regression is a suitable approach for the prediction problem of classifying whether a customer will subscribe to a term deposit. This method assumes a linear relationship between the input features, such as demographic, financial, and campaign-specific attributes, and the log-odds of the binary outcome variable. Since the outcome variable is binary ('yes' or 'no'), logistic regression can effectively model the probability of a customer subscribing to a term deposit based on these attributes. Moreover, logistic regression provides interpretable results, allowing stakeholders to understand the impact of each predictor on the likelihood of subscription. Therefore, logistic regression is a practical choice for this prediction problem, providing insights into the factors influencing term deposit subscriptions.
+
+**Decision Trees**
+Decision trees offer a superior approach for predicting term deposit subscriptions due to their ability to capture complex decision-making processes inherent in the prediction problem. With input features such as demographic, financial, and campaign-specific attributes, decision trees can efficiently partition the feature space to identify key predictors influencing subscription behavior. This method's interpretability is particularly advantageous for understanding the underlying factors driving customer decisions, enabling stakeholders to gain actionable insights into customer behavior. Moreover, decision trees excel in handling both numerical and categorical data, making them suitable for diverse datasets commonly encountered in banking and finance. Overall, decision trees represent a robust and interpretable approach for predicting term deposit subscriptions, offering valuable insights into customer behavior and aiding in informed decision-making processes.
+
+In summary, each method possesses unique strengths and assumptions, with their applicability to the prediction problem contingent upon various factors such as data characteristics, relationship complexity, and computational constraints. By leveraging a combination of methods and conducting comprehensive performance evaluations, insights into the most suitable approach for the given dataset and prediction objective can be gleaned.
+
+
+## **Predictive analysis and results**
+
+#### **Feature Selection with Logistic Lasso Regression**
+
+The Lasso regression with logistic regression method was employed focusing on feature selection for enhanced model interpretability. Through cross-validation, an optimal lambda value of 0.0011 was determined, guiding the selection of relevant features such as job type, housing status, month, campaign, pdays, previous, age_groups and previous campaign outcomes. 
+
+```{r  warning=FALSE, message=FALSE}
+
+
+## Lasso Logistic Regression for feature selection
+
+# Create a matrix for predictors in the training data
+X_train <- as.matrix(train_data[, -which(names(train_data) == "deposit")])  
+
+# Create a response vector
+y_train <- ifelse(train_data$deposit == "yes", 1, 0)  # Convert "deposit" to binary: 1 for "yes", 0 for "no"
+
+# Perform Lasso logistic regression with cross-validation
+lasso_cv <- cv.glmnet(X_train, y_train, alpha = 1, family = "binomial")  
+
+plot(lasso_cv)
+
+# Get the optimal lambda value
+optimal_lambda <- lasso_cv$lambda.min
+
+print(paste("Optimal lambda value for Lasso Regression :", optimal_lambda))
+
+
+# Fit the final Lasso logistic regression model with the optimal lambda value
+lasso_model <- glmnet(X_train, y_train, alpha = 1, lambda = optimal_lambda, family = "binomial")
+
+# Get selected feature indices
+selected_indices <- which(coef(lasso_model) != 0)
+
+# Print selected features
+cat("Selected Features:", "\n")
+cat(names(train_data)[-which(names(train_data) == "deposit")][selected_indices], "\n")
+
+
+```
+
+
+```{r warning=FALSE, echo=FALSE, message=FALSE, eval=FALSE, include=FALSE}
+## Random forest with all the variables
+
+# Train the Random Forest model with more trees
+rf_model <- randomForest(deposit ~ ., data = train_data, ntree = 1000)
+
+# Predict on the test data
+y_pred_test <- predict(rf_model, newdata = test_data)
+
+# Compute confusion matrix
+conf_matrix <- confusionMatrix(data = y_pred_test, reference = test_data$deposit)
+
+# Calculate precision, recall, and F1 score
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- conf_matrix$byClass['F1']
+
+# Print confusion matrix and evaluation metrics
+print("Evaluation Metrics of Random Forest Model with all predictors are: ")
+print(conf_matrix)
+print(paste("Precision:", precision))
+print(paste("Recall:", recall))
+print(paste("F1 Score:", f1_score))
+
+# Get predicted probabilities
+y_pred_prob <- predict(rf_model, newdata = test_data, type = "prob")
+
+# Compute ROC curve
+roc_curve <- roc(test_data$deposit, y_pred_prob[, "yes"])
+
+# Compute ROC AUC
+roc_auc <- auc(roc_curve)
+
+# Print ROC AUC
+print(paste("ROC AUC:", roc_auc))
+
+# Plot smoother ROC curve
+#plot(roc_curve, main = "ROC Curve", col = "blue")
+
+```
+
+#### **Random Forest with selected features from Variable Importance**
+
+The variable importance analysis of the random model highlights key predictors influencing customer deposit behavior. 'Duration' emerges as the most influential factor, indicating the importance of the last contact duration during the campaign. The interaction between 'pdays' and 'duration' suggests varying client responses based on contact timing. Additionally, 'month' demonstrates notable importance, reflecting seasonal trends or campaign effectiveness. 'Age' and 'day' also play significant roles, along with 'balance', 'pdays', and 'poutcome', emphasizing their relevance in predicting deposit outcomes. These insights inform strategic decision-making for future marketing and engagement initiatives.
+
+
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+#Random forest with top 10 predictors with var_importance
+
+# Train the Random Forest model
+rf_model <- randomForest(deposit ~ ., data = train_data, ntree = 500)
+
+# Get variable importance
+var_importance <- importance(rf_model)
+
+# Plot variable importance
+varImpPlot(rf_model)
+
+
+
+```
+
+
+```{r echo=FALSE, eval=FALSE, include=FALSE}
+var_importance
+```
+
+
+```{r warning=FALSE, echo=FALSE, message=FALSE, include=FALSE}
+# Get the names of the top important variables (adjust 5 to the number of top variables you want)
+top_vars <- rownames(var_importance)[order(var_importance, decreasing = TRUE)[1:10]]
+
+# Include the target variable in the top variables
+top_vars <- c(top_vars, "deposit")
+
+# Subset the training data with only the top important variables
+train_data_top <- train_data[, top_vars]
+
+# Train the Random Forest model with only the top important variables
+rf_model_top <- randomForest(deposit ~ ., data = train_data_top, ntree = 500)
+
+# Predict on the training data
+y_pred_train <- predict(rf_model_top, newdata = train_data_top)
+
+
+# Subset the test data with only the top important variables
+test_data_top <- test_data[, c(top_vars[-length(top_vars)])]  # Exclude the target variable
+
+# Predict on the test data
+y_pred_test <- predict(rf_model_top, newdata = test_data_top)
+
+# Calculate accuracy on the test data
+accuracy_test <- mean(y_pred_test == test_data$deposit)
+print(paste("Accuracy Random Forest Model with top 10 predictors on test data:", accuracy_test))
+
+
+# Create confusion matrix
+conf_matrix <- confusionMatrix(data = y_pred_test, reference = test_data$deposit)
+
+# Calculate precision, recall, and F1 score
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- conf_matrix$byClass['F1']
+
+# Print confusion matrix and evaluation metrics
+print("Evaluation Metrics of Random Forest Model with top 10 predictors are: ")
+
+print(conf_matrix)
+print(paste("Precision:", precision))
+print(paste("Recall:", recall))
+print(paste("F1 Score:", f1_score))
+
+# Compute ROC curve
+roc_curve <- roc(test_data$deposit, as.numeric(y_pred_test))
+
+# Compute ROC AUC
+roc_auc <- auc(roc_curve)
+
+# Print ROC AUC
+print(paste("ROC AUC:", roc_auc))
+
+
+```
+
+
+```{r warning=FALSE, echo=FALSE, message=FALSE,include=FALSE}
+# Extract selected features from Lasso- RANDOM FOREST
+selected_features <- c( "job", "housing", "month", "campaign", "pdays", "previous", "poutcome", "age_group")
+
+# Train the Random Forest model with selected features
+rf_model_selected <- randomForest(deposit ~ ., data = train_data[, c(selected_features, "deposit")], ntree = 1000)
+
+# Predict on the test data using selected features
+y_pred_test_selected <- predict(rf_model_selected, newdata = test_data[, selected_features])
+
+# Compute confusion matrix
+conf_matrix_selected <- confusionMatrix(data = y_pred_test_selected, reference = test_data$deposit)
+
+# Calculate precision, recall, and F1 score
+precision_selected <- conf_matrix_selected$byClass['Pos Pred Value']
+recall_selected <- conf_matrix_selected$byClass['Sensitivity']
+f1_score_selected <- conf_matrix_selected$byClass['F1']
+
+# Print confusion matrix and evaluation metrics
+print("Evaluation Metrics of Random Forest Model with selected features are: ")
+print(conf_matrix_selected)
+print(paste("Precision:", precision_selected))
+print(paste("Recall:", recall_selected))
+print(paste("F1 Score:", f1_score_selected))
+
+# Get predicted probabilities using selected features
+y_pred_prob_selected <- predict(rf_model_selected, newdata = test_data[, selected_features], type = "prob")
+
+# Compute ROC curve
+roc_curve_selected <- roc(test_data$deposit, y_pred_prob_selected[, "yes"])
+
+# Compute ROC AUC
+roc_auc_selected <- auc(roc_curve_selected)
+
+# Print ROC AUC
+print(paste("ROC AUC:", roc_auc_selected))
+
+# Additional evaluation metrics
+accuracy_selected <- conf_matrix_selected$overall['Accuracy']
+specificity_selected <- conf_matrix_selected$byClass['Specificity']
+
+# Print additional evaluation metrics
+print(paste("Accuracy:", accuracy_selected))
+#print(paste("Specificity:", specificity_selected))
+
+```
+
+
+#### **Performance Analysis of Random Forest Models on test data with Variable Selection Techniques**
+
+The evaluation metrics provide valuable insights into the performance of the Random Forest models trained on different sets of variables. 
+
+- **All Variables Model**: This model, trained with all available predictor variables, demonstrates solid performance across all metrics. It achieves high precision 89.91%, recall 81.80%, and F1 score 85.66%, indicating a good balance between identifying positive instances (deposits) and minimizing false positives. The ROC AUC of 91.92% suggests strong discrimination ability, while the test accuracy of 85.66% indicates overall model effectiveness.
+
+
+- **Top 10 Variables Model**: Focused on the top 10 predictors based on variable importance, this model maintains strong performance, albeit slightly lower than the all-variables model. It still achieves commendable precision 88.16%, recall 80.71%, and F1 score 84.27%. The ROC AUC of 91.12% indicates good discrimination ability, and the test accuracy of 84.23% reflects its overall effectiveness. **Despite the reduced feature set, the model maintains robustness, indicating substantial predictive power in the selected predictors. This streamlined approach simplifies the model and enhances interpretability without compromising predictive accuracy, albeit slightly lower than the model with all predictors.**
+
+
+- **Model Selected by Lasso**: In contrast, the model selected by Lasso regularization exhibits notably different performance characteristics. While it achieves high recall 88.70%, indicating its ability to capture a large proportion of positive instances, its precision 67.05% and F1 score 76.37% are comparatively lower. The ROC AUC of 72.96% suggests weaker discrimination ability, and the test accuracy of 71.27% indicates reduced overall effectiveness compared to the other models.
+
+In summary, the all-variables and top-10-variables models perform similarly well, with robust precision-recall balance and high overall accuracy. Conversely, the Lasso-selected model, while excelling in recall, sacrifices precision and overall model effectiveness, indicating potential overfitting or selection bias in the feature selection process. Therefore, for this dataset, leveraging the broader set of variables or focusing on the top predictors appears to yield more robust and effective Random Forest models.**While feature selection techniques like Lasso offer model interpretability and reduced complexity, the emphasis on accuracy prompts the utilization of all variables in the predictive model.**
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+###TABLE-RANDOM FOREST
+
+
+# Train the Random Forest model with all variables
+rf_model_all <- randomForest(deposit ~ ., data = train_data, ntree = 1000)
+
+
+# Train the Random Forest model with top 10 predictors based on variable importance
+rf_model_top <- randomForest(deposit ~ ., data = train_data_top, ntree = 500)
+
+# Extract selected features from Lasso- RANDOM FOREST
+selected_features <- c( "job", "housing", "month", "campaign", "pdays", "previous", "poutcome", "age_group")
+test_data_selected = test_data[, selected_features]
+
+# Train the Random Forest model with selected features from Lasso
+rf_model_selected <- randomForest(deposit ~ ., data = train_data[, c(selected_features, "deposit")], ntree = 1000)
+
+# Function to calculate evaluation metrics
+calculate_metrics <- function(model, test_data) {
+  # Predict on the test data
+  y_pred <- predict(model, newdata = test_data)
+  
+  # Compute confusion matrix
+  conf_matrix <- confusionMatrix(data = y_pred, reference = test_data$deposit)
+  
+  # Calculate precision, recall, and F1 score
+  precision <- conf_matrix$byClass['Pos Pred Value']
+  recall <- conf_matrix$byClass['Sensitivity']
+  f1_score <- conf_matrix$byClass['F1']
+  
+  # Get predicted probabilities
+  y_pred_prob <- predict(model, newdata = test_data, type = "prob")
+  
+  # Compute ROC curve
+  roc_curve <- roc(test_data$deposit, y_pred_prob[, "yes"])
+  
+  # Compute ROC AUC
+  roc_auc <- auc(roc_curve)
+  
+  # Calculate accuracy
+  accuracy <- conf_matrix$overall['Accuracy']
+  
+  # Return metrics
+  return(list(Precision = precision, Recall = recall, F1_Score = f1_score, ROC_AUC = roc_auc, Test_Accuracy = accuracy))
+}
+
+# Ensure consistent factor levels for the deposit variable in the test datasets
+if ("deposit" %in% colnames(test_data_top)) {
+  test_data_top$deposit <- factor(test_data_top$deposit, levels = levels(train_data_top$deposit))
+} else {
+  # If the 'deposit' column is missing, retrieve it from the original data
+  test_data_top$deposit <- factor(test_data$deposit, levels = levels(train_data_top$deposit))
+}
+
+
+if ("deposit" %in% colnames(test_data_selected)) {
+  test_data_selected$deposit <- factor(test_data_selected$deposit, levels = levels(train_data$deposit))
+} else {
+  # If the 'deposit' column is missing, retrieve it from the original data
+  test_data_selected$deposit <- factor(test_data$deposit, levels = levels(train_data$deposit))
+}
+
+# Calculate metrics for all three models
+metrics_all <- calculate_metrics(rf_model_all, test_data)
+metrics_top <- calculate_metrics(rf_model_top, test_data_top)
+metrics_selected <- calculate_metrics(rf_model_selected, test_data_selected)
+
+# Create a table
+metrics_table <- rbind(metrics_all, metrics_top, metrics_selected)
+rownames(metrics_table) <- c("All Variables", "Top 10 Variables", "Selected by Lasso")
+
+# Print the table
+print("Evaluation Metrics of Random Forest Models")
+print(metrics_table)
+
+
+```
+
+
+
+#### **Performance Evaluation on test data Using Resampling Techniques - Random Forest**
+
+In evaluating model performance through bootstrapping and 5-fold cross-validation, we observe consistent and robust results across the models:
+
+- **Baseline (All Variables)**: The model trained on all available predictor variables demonstrates stable and reliable performance across both bootstrapping and 5-fold cross-validation. With an accuracy of 85.67% in the baseline setting, it achieves high precision (89.81%), recall (81.92%), and F1 score (85.68%). The ROC AUC of 91.94% underscores its strong discriminatory capability.
+
+- **Bootstrapping**: Employing bootstrapping for model evaluation yields results comparable to the baseline model. The bootstrapped model maintains a high accuracy of 85.31% along with commendable precision (89.32%), recall (81.70%), and F1 score (85.34%). The ROC AUC of 91.59% indicates robust discrimination, consistent with the baseline performance.
+
+- **5-Fold Cross-Validation**: Similarly, utilizing 5-fold cross-validation for evaluation yields performance metrics closely aligned with the baseline and bootstrapping approaches. With an accuracy of 85.79%, the cross-validated model demonstrates strong precision (89.78%), recall (82.20%), and F1 score (85.82%). The ROC AUC of 91.67% further validates its discriminatory power.
+
+In summary, both bootstrapping and 5-fold cross-validation techniques provide reliable estimates of model performance, consistently reaffirming the efficacy of the baseline model trained on all variables. These resampling methods offer robust assessments of model generalization and can guide decision-making in deploying the model for real-world applications.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+##TABLE
+# Train the Random Forest model with all variables
+rf_model_all <- randomForest(deposit ~ ., data = train_data, ntree = 1000)
+
+# Calculate evaluation metrics for baseline model
+metrics_all <- calculate_metrics(rf_model_all, test_data)
+
+# Function to perform bootstrapping and evaluate model performance
+bootstrap_evaluation <- function(data, formula, test_data, n_bootstraps = 100, ntree = 500, alpha = 0.05) {
+  # Initialize matrices to store evaluation metrics for each bootstrap sample
+  accuracies <- numeric(n_bootstraps)
+  precisions <- numeric(n_bootstraps)
+  recalls <- numeric(n_bootstraps)
+  f1_scores <- numeric(n_bootstraps)
+  auc_values <- numeric(n_bootstraps)
+  
+  # Loop through bootstraps
+  for (i in 1:n_bootstraps) {
+    # Generate bootstrap sample
+    boot_data <- data[sample(nrow(data), replace = TRUE), ]
+    
+    # Train Random Forest model
+    rf_model <- randomForest(formula, data = boot_data, ntree = ntree)
+    
+    # Predict probabilities on test data
+    y_pred_prob <- predict(rf_model, newdata = test_data, type = "prob")
+    
+    # Compute ROC curve
+    roc_curve <- roc(test_data$deposit, y_pred_prob[, "yes"])
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    auc_values[i] <- auc_value
+    
+    # Predict on test data
+    y_pred_test <- ifelse(y_pred_prob[, "yes"] > 0.5, "yes", "no")
+    
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = factor(y_pred_test, levels = levels(test_data$deposit)), 
+                                   reference = test_data$deposit)
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+    
+    # Calculate accuracy
+    accuracies[i] <- sum(y_pred_test == test_data$deposit) / length(test_data$deposit)
+  }
+  
+  # Calculate average evaluation metrics
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  avg_auc <- mean(auc_values)
+  
+  # Return average evaluation metrics
+  return(list(Accuracy = avg_accuracy, Precision = avg_precision, Recall = avg_recall, 
+              F1_Score = avg_f1_score, AUC_ROC = avg_auc))
+}
+
+# Define formula
+formula <- deposit ~ .
+
+# Perform bootstrapping and evaluate model performance
+bootstrap_metrics <- bootstrap_evaluation(train_data, formula, test_data, n_bootstraps = 100, ntree = 500, alpha = 0.05)
+
+# Function to perform 5-fold cross-validation for Random Forest
+rf_cv_evaluation <- function(train_data, formula, test_data) {
+  # Define 5-fold cross-validation
+  folds <- vfold_cv(train_data, v = 5)
+  
+  # Initialize matrices to store evaluation metrics for each fold
+  accuracies <- numeric(5)
+  precisions <- numeric(5)
+  recalls <- numeric(5)
+  f1_scores <- numeric(5)
+  auc_values <- numeric(5)
+  
+  # Perform 5-fold cross-validation
+  for (i in 1:5) {
+    # Split data into train and test sets for the current fold
+    fold_data <- training(folds$splits[[i]])
+    val_data <- testing(folds$splits[[i]])
+    
+    # Train Random Forest model
+    rf_model <- randomForest(formula, data = fold_data, ntree = 500)
+    
+    # Predict probabilities on validation data
+    y_pred_prob <- predict(rf_model, newdata = val_data, type = "prob")
+    
+    # Compute ROC curve
+    roc_curve <- roc(val_data$deposit, y_pred_prob[, "yes"])
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    auc_values[i] <- auc_value
+    
+    # Predict on validation data
+    y_pred_val <- ifelse(y_pred_prob[, "yes"] > 0.5, "yes", "no")
+    
+    # Calculate evaluation metrics for validation data
+    conf_matrix <- confusionMatrix(data = factor(y_pred_val, levels = levels(val_data$deposit)), 
+                                   reference = val_data$deposit)
+    accuracy <- conf_matrix$overall['Accuracy']
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    accuracies[i] <- accuracy
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+  }
+  
+  # Calculate average evaluation metrics for validation data
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  avg_auc <- mean(auc_values)
+  
+  # Predict on test data
+  y_pred_test <- predict(rf_model, newdata = test_data)
+  
+  # Calculate evaluation metrics for test data
+  conf_matrix_test <- confusionMatrix(data = factor(y_pred_test, levels = levels(test_data$deposit)), 
+                                      reference = test_data$deposit)
+  
+  # Calculate test accuracy, precision, recall, and F1 score
+  test_accuracy <- conf_matrix_test$overall['Accuracy']
+  test_precision <- conf_matrix_test$byClass['Pos Pred Value']
+  test_recall <- conf_matrix_test$byClass['Sensitivity']
+  test_f1_score <- conf_matrix_test$byClass['F1']
+  
+  # Predict probabilities on test data for ROC AUC calculation
+  y_pred_prob_test <- predict(rf_model, newdata = test_data, type = "prob")
+  
+  # Compute ROC curve for test data
+  roc_curve_test <- roc(test_data$deposit, y_pred_prob_test[, "yes"])
+  
+  # Calculate AUC for test data
+  auc_value_test <- auc(roc_curve_test)
+  
+  # Return evaluation metrics for test data
+  return(list(Accuracy = test_accuracy, Precision = test_precision, Recall = test_recall, 
+              F1_Score = test_f1_score, AUC_ROC = auc_value_test))
+}
+
+# Perform 5-fold cross-validation for Random Forest
+cv_metrics <- rf_cv_evaluation(train_data, formula, test_data)
+
+
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+# Create a dataframe for evaluation metrics
+metrics_table <- data.frame(
+  Model = c("Baseline (All Variables)", "Bootstrapping", "5-Fold Cross-Validation"),
+  Accuracy = c(metrics_all$Test_Accuracy, bootstrap_metrics$Accuracy, cv_metrics$Accuracy),
+  Precision = c(metrics_all$Precision["Pos Pred Value"], bootstrap_metrics$Precision, cv_metrics$Precision["Pos Pred Value"]),
+  Recall = c(metrics_all$Recall["Sensitivity"], bootstrap_metrics$Recall, cv_metrics$Recall["Sensitivity"]),
+  F1_Score = c(metrics_all$F1_Score["F1"], bootstrap_metrics$F1_Score, cv_metrics$F1_Score),
+  AUC_ROC = c(metrics_all$ROC_AUC, bootstrap_metrics$AUC_ROC, cv_metrics$AUC_ROC)
+)
+print("Evaluation Metrcis of the Random Forest Models: ")
+# Print the metrics table
+print(metrics_table)
+
+
+```
+
+
+
+#### **Random Forest Model Performance on test data with Bootstrapping (Confidence Intervals)**
+
+
+The Random Forest model, incorporating all predictors with bootstrapping, demonstrates robust performance on the test data. It achieves an average accuracy of 85.30% (CI: [84.81%, 85.77%]), indicating the proportion of correctly classified instances. The model exhibits strong predictive capability with an average precision of 89.34% (CI: [88.60%, 89.92%]) and recall of 81.68% (CI: [80.48%, 82.57%]). This balance between precision and recall is further reflected in the model's F1 score of 85.34% (CI: [84.80%, 85.83%]). Moreover, the average AUC of 91.57% (CI: [91.33%, 91.87%]) underscores the model's effective discrimination between positive and negative cases. Overall, these metrics reaffirm the reliability and consistency of the Random Forest model in predictive tasks, strengthened by the application of bootstrapping techniques.
+
+```{r echo=FALSE, warning=FALSE, message = FALSE}
+
+## Random Forest with bootstrapping with all predictors
+
+# Function to perform bootstrapping and evaluate model performance
+bootstrap_evaluation <- function(data, formula, test_data, n_bootstraps = 100, ntree = 500, alpha = 0.05) {
+  # Initialize matrices to store evaluation metrics for each bootstrap sample
+  accuracies <- numeric(n_bootstraps)
+  precisions <- numeric(n_bootstraps)
+  recalls <- numeric(n_bootstraps)
+  f1_scores <- numeric(n_bootstraps)
+  auc_values <- numeric(n_bootstraps)
+  
+  # Loop through bootstraps
+  for (i in 1:n_bootstraps) {
+    # Generate bootstrap sample
+    boot_data <- data[sample(nrow(data), replace = TRUE), ]
+    
+    # Train Random Forest model
+    rf_model <- randomForest(formula, data = boot_data, ntree = ntree)
+    
+    # Predict probabilities on test data
+    y_pred_prob <- predict(rf_model, newdata = test_data, type = "prob")
+    
+    # Compute ROC curve
+    roc_curve <- roc(test_data$deposit, y_pred_prob[, "yes"])
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on test data
+    y_pred_test <- ifelse(y_pred_prob[, "yes"] > 0.5, "yes", "no")
+    
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = factor(y_pred_test, levels = levels(test_data$deposit)), 
+                                   reference = test_data$deposit)
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+    auc_values[i] <- auc_value
+    
+    # Calculate accuracy
+    accuracies[i] <- sum(y_pred_test == test_data$deposit) / length(test_data$deposit)
+  }
+  
+  # Calculate average evaluation metrics
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  avg_auc <- mean(auc_values)
+  
+  # Calculate confidence intervals
+  ci_accuracy <- quantile(accuracies, c(alpha / 2, 1 - alpha / 2))
+  ci_precision <- quantile(precisions, c(alpha / 2, 1 - alpha / 2))
+  ci_recall <- quantile(recalls, c(alpha / 2, 1 - alpha / 2))
+  ci_f1_score <- quantile(f1_scores, c(alpha / 2, 1 - alpha / 2))
+  ci_auc <- quantile(auc_values, c(alpha / 2, 1 - alpha / 2))
+  
+  # Print average evaluation metrics and confidence intervals
+  print("Evaluation Metrics of Random Forest Model with bootstrapping are: ")
+
+  # Print average evaluation metrics and confidence intervals
+  print(paste("Average Accuracy:", avg_accuracy))
+  print(paste("Confidence Interval (Accuracy): [", ci_accuracy[1], ", ", ci_accuracy[2], "]"))
+  print(paste("Average Precision:", avg_precision))
+  print(paste("Confidence Interval (Precision): [", ci_precision[1], ", ", ci_precision[2], "]"))
+  print(paste("Average Recall:", avg_recall))
+  print(paste("Confidence Interval (Recall): [", ci_recall[1], ", ", ci_recall[2], "]"))
+  print(paste("Average F1 Score:", avg_f1_score))
+  print(paste("Confidence Interval (F1 Score): [", ci_f1_score[1], ", ", ci_f1_score[2], "]"))
+  print(paste("Average AUC:", avg_auc))
+  print(paste("Confidence Interval (AUC): [", ci_auc[1], ", ", ci_auc[2], "]"))
+
+  
+  # Plot smoother ROC curve
+  #plot(roc_curve, main = "Average ROC Curve", col = "blue")
+}
+
+# Define formula
+formula <- deposit ~ .
+
+# Perform bootstrapping and evaluate model performance
+bootstrap_evaluation(train_data, formula, test_data, n_bootstraps = 100, ntree = 500, alpha = 0.05)
+
+```
+
+
+#### **Random Forest Model Performance with 5-Fold Cross-Validation on held-out fold and Test Data **
+
+
+The Random Forest model, evaluated using 5-fold cross-validation on the held-out fold, demonstrates an average accuracy of 85.68%, with an average precision of 90.28% and recall of 81.63%. The F1 score, a harmonic mean of precision and recall, stands at 85.74%. These metrics indicate the model's consistent performance across different subsets of the validation data. On the test data, the Random Forest model maintains its effectiveness with an accuracy of 85.58%. It achieves a precision of 89.64% and recall of 81.92%, resulting in an F1 score of 85.60% and an AUC of 91.91%. These results confirm the model's reliability and generalization ability, as it performs consistently well on unseen data, aligning closely with the performance observed during cross-validation.
+
+```{r echo=FALSE, warning=FALSE, message = FALSE}
+# Function to perform 5-fold cross-validation for Random Forest
+rf_cv_evaluation <- function(train_data, formula, test_data) {
+  # Define 5-fold cross-validation
+  folds <- vfold_cv(train_data, v = 5)
+  
+  # Initialize matrices to store evaluation metrics for each fold
+  accuracies <- numeric(5)
+  precisions <- numeric(5)
+  recalls <- numeric(5)
+  f1_scores <- numeric(5)
+
+  # Perform 5-fold cross-validation
+  for (i in 1:5) {
+    # Split data into train and test sets for the current fold
+    fold_data <- training(folds$splits[[i]])
+    val_data <- testing(folds$splits[[i]])
+    
+    # Train Random Forest model
+    rf_model <- randomForest(formula, data = fold_data, ntree = 500)
+    
+    # Predict probabilities on validation data
+    y_pred_prob <- predict(rf_model, newdata = val_data, type = "prob")
+    
+    # Compute ROC curve
+    roc_curve <- roc(val_data$deposit, y_pred_prob[, "yes"])
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on validation data
+    y_pred_val <- ifelse(y_pred_prob[, "yes"] > 0.5, "yes", "no")
+    
+    # Calculate evaluation metrics for validation data
+    conf_matrix <- confusionMatrix(data = factor(y_pred_val, levels = levels(val_data$deposit)), 
+                                   reference = val_data$deposit)
+    accuracy <- conf_matrix$overall['Accuracy']
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    accuracies[i] <- accuracy
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+  }
+  
+  # Calculate average evaluation metrics for validation data
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+
+  # Print average evaluation metrics for validation data
+  print("Average Evaluation Metrics of Random Forest(5-Fold Cross-Validation) on the held-out fold:")
+  print(paste("Average Accuracy:", avg_accuracy))
+  print(paste("Average Precision:", avg_precision))
+  print(paste("Average Recall:", avg_recall))
+  print(paste("Average F1 Score:", avg_f1_score))
+
+  # Train Random Forest model on the entire training data
+  final_rf_model <- randomForest(formula, data = train_data, ntree = 500)
+  
+  # Predict probabilities on test data
+  y_pred_prob_test <- predict(final_rf_model, newdata = test_data, type = "prob")
+  
+  # Predict on test data
+  y_pred_test <- ifelse(y_pred_prob_test[, "yes"] > 0.5, "yes", "no")
+  
+  # Calculate evaluation metrics for test data
+  conf_matrix_test <- confusionMatrix(data = factor(y_pred_test, levels = levels(test_data$deposit)), 
+                                      reference = test_data$deposit)
+  
+  # Calculate test accuracy, precision, recall, and F1 score
+  test_accuracy <- conf_matrix_test$overall['Accuracy']
+  test_precision <- conf_matrix_test$byClass['Pos Pred Value']
+  test_recall <- conf_matrix_test$byClass['Sensitivity']
+  test_f1_score <- conf_matrix_test$byClass['F1']
+  
+  # Print evaluation metrics for test data
+  print("Evaluation Metrics of Random Forest(5-Fold Cross-Validation) on Test Data:")
+  print(paste("Test Accuracy:", test_accuracy))
+  print(paste("Precision:", test_precision))
+  print(paste("Recall:", test_recall))
+  print(paste("F1 Score:", test_f1_score))
+  
+  # Calculate ROC AUC for test data
+  roc_curve_test <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob_test[, "yes"])
+  auc_test <- auc(roc_curve_test)
+  
+  # Print ROC AUC for test data
+  print(paste("ROC AUC for Test Data:", auc_test))
+}
+
+# Define formula
+formula <- deposit ~ .
+
+# Call rf_cv_evaluation function with your train data and test data for evaluation
+rf_cv_evaluation(train_data, formula, test_data)
+
+```
+
+
+#### **Significant Predictor Variables in Logistic Regression Model**
+
+The logistic regression model reveals several significant predictor variables beyond housing status and call duration that contribute to predicting the outcome. Factors such as job type, education status, housing and personal loan status, mode and month of contact, duration of call, number of contacts performed during the current campaign, Age of the clients and previous campaign outcomes demonstrate notable coefficients, indicating their impact on the likelihood of a positive outcome.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+## Logistic Regression with all predictors - Baseline
+
+# Define formula
+formula <- deposit ~ .
+
+# Train logistic regression model
+logit_model <- glm(formula, data = train_data, family = "binomial")
+summary(logit_model)
+
+# Predict on test data
+#y_pred_prob <- predict(logit_model, newdata = test_data, type = "response")
+
+# Calculate AUC-ROC
+#roc_curve <- roc(test_data$deposit, y_pred_prob)
+#auc_value <- auc(roc_curve)
+
+# Predict on test data using threshold 0.5
+#y_pred <- ifelse(y_pred_prob > 0.5, "yes", "no")
+
+# Convert to factor with levels "yes" and "no"
+#y_pred <- factor(y_pred, levels = c("yes", "no"))
+
+# Calculate evaluation metrics
+#conf_matrix <- confusionMatrix(data = y_pred, reference = test_data$deposit)
+#accuracy <- conf_matrix$overall['Accuracy']
+#precision <- conf_matrix$byClass['Pos Pred Value']
+#recall <- conf_matrix$byClass['Sensitivity']
+#f1_score <- conf_matrix$byClass['F1']
+
+# Print evaluation metrics
+#print("Evaluation Metrics of Linear Regression are: ")
+#print(paste("Accuracy:", accuracy))
+#print(paste("Precision:", precision))
+#print(paste("Recall:", recall))
+#print(paste("F1 Score:", f1_score))
+#print(paste("AUC-ROC:", auc_value))
+
+# Plot ROC curve
+#plot(roc_curve, main = "ROC Curve", col = "blue")
+
+```
+
+
+#### **Performance Evaluation on test data Using Resampling Techniques - Logistic Regression**
+
+In evaluating the logistic regression models through bootstrapping and 5-fold cross-validation, we analyze the following results:
+
+*   **Baseline (All Variables)**: The logistic regression model achieved an accuracy of 82.17%, with precision and recall rates at 81.45% and 85.40%, respectively. The F1 score, reflecting a balanced measure of precision and recall, stands at 83.38%. Notably, the model exhibits strong discriminatory capability, as evidenced by an AUC-ROC value of 90.31%.
+
+*   **Bootstrapping**: Employing bootstrapping for evaluation yielded results consistent with the baseline model. The bootstrapped logistic regression model maintained a high accuracy of 82.08%, with commendable precision (81.44%) and recall (85.19%). The F1 score remained balanced at 83.27%, while the AUC-ROC value slightly decreased to 90.17%.
+
+*   **5-Fold Cross-Validation**: Utilizing 5-fold cross-validation for evaluation yielded performance metrics closely aligned with the baseline and bootstrapping approaches. With an accuracy of 82.14%, the cross-validated logistic regression model demonstrates strong precision (80.88%) and recall (85.23%). The F1 score remains consistent at 83.00%, while the AUC-ROC of 90.22% further validates its discriminatory power.
+
+In summary, both bootstrapping and 5-fold cross-validation techniques provide reliable estimates of logistic regression model performance, consistently reaffirming the efficacy of the baseline model. These resampling methods offer robust assessments of model generalization, guiding decisions in real-world applications.
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+#TABLE
+## Logistic Regression with all predictors - Baseline
+
+# Train logistic regression model
+logit_model <- glm(formula, data = train_data, family = "binomial")
+# Predict on test data
+y_pred_prob <- predict(logit_model, newdata = test_data, type = "response")
+
+# Calculate AUC-ROC
+roc_curve <- roc(test_data$deposit, y_pred_prob)
+auc_value <- auc(roc_curve)
+
+# Predict on test data using threshold 0.5
+y_pred <- ifelse(y_pred_prob > 0.5, "yes", "no")
+
+# Convert to factor with levels "yes" and "no"
+y_pred <- factor(y_pred, levels = c("yes", "no"))
+
+# Calculate evaluation metrics
+conf_matrix <- confusionMatrix(data = y_pred, reference = test_data$deposit)
+accuracy <- conf_matrix$overall['Accuracy']
+precision <- conf_matrix$byClass['Pos Pred Value']
+recall <- conf_matrix$byClass['Sensitivity']
+f1_score <- conf_matrix$byClass['F1']
+
+
+# Save metrics in lists
+baseline_metrics <- list(Accuracy = accuracy, Precision = precision, Recall = recall, F1_Score = f1_score, AUC_ROC = auc_value)
+
+## Logistic Regression with bootstrapping
+
+# Function to perform bootstrapping and evaluate model performance for logistic regression
+bootstrap_evaluation_logistic <- function(data, formula, test_data, n_bootstraps = 100, alpha = 0.05) {
+  # Initialize matrices to store evaluation metrics for each bootstrap sample
+  accuracies <- numeric(n_bootstraps)
+  precisions <- numeric(n_bootstraps)
+  recalls <- numeric(n_bootstraps)
+  f1_scores <- numeric(n_bootstraps)
+  auc_values <- numeric(n_bootstraps)
+  
+  # Loop through bootstraps
+  for (i in 1:n_bootstraps) {
+    # Generate bootstrap sample
+    boot_data <- data[sample(nrow(data), replace = TRUE), ]
+    
+    # Train logistic regression model
+    logit_model <- glm(formula, data = boot_data, family = "binomial")
+    
+    # Predict probabilities on test data
+    y_pred_prob <- predict(logit_model, newdata = test_data, type = "response")
+    
+    # Compute ROC curve
+    roc_curve <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob)
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on test data
+    y_pred_test <- ifelse(y_pred_prob > 0.5, "yes", "no")
+
+    # Ensure consistent levels for 'deposit' variable
+    y_pred_test <- factor(y_pred_test, levels = levels(test_data$deposit))
+
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = y_pred_test, reference = test_data$deposit)
+
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+    auc_values[i] <- auc_value
+    
+    # Calculate accuracy
+    accuracies[i] <- conf_matrix$overall['Accuracy']
+  }
+  
+  # Calculate average evaluation metrics
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  avg_auc <- mean(auc_values)
+  
+  
+  # Save metrics in a list
+  bootstrap_metrics <- list(Accuracy = avg_accuracy, Precision = avg_precision, Recall = avg_recall, F1_Score = avg_f1_score, AUC_ROC = avg_auc)
+  return(bootstrap_metrics)
+}
+
+# Define formula
+formula <- deposit ~ .
+
+# Perform bootstrapping and evaluate model performance for logistic regression
+bootstrap_metrics <- bootstrap_evaluation_logistic(train_data, formula, test_data, n_bootstraps = 100, alpha = 0.05)
+
+#### Logistic Regression - 5-Fold Cross Validation with all predictors
+
+
+# Define formula
+formula <- deposit ~ .
+
+# Define 5-fold cross-validation
+folds <- vfold_cv(train_data, v = 5)
+
+# Initialize matrices to store evaluation metrics for each fold
+accuracies <- numeric(5)
+precisions <- numeric(5)
+recalls <- numeric(5)
+f1_scores <- numeric(5)
+auc_values <- numeric(5)
+
+# Perform 5-fold cross-validation
+for (i in 1:5) {
+    # Split data into train and test sets for the current fold
+    fold_data <- training(folds$splits[[i]])
+    val_data <- testing(folds$splits[[i]])
+    
+    # Train logistic regression model
+    logit_fit <- glm(formula, data = fold_data, family = binomial())
+    
+    # Predict probabilities on validation data
+    y_pred_prob <- predict(logit_fit, newdata = val_data, type = "response")
+    
+    # Compute ROC curve
+    roc_curve <- roc(ifelse(val_data$deposit == "yes", 1, 0), y_pred_prob)
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on validation data
+    y_pred_val <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    
+    # Convert to factor with levels "yes" and "no"
+    y_pred_val <- factor(y_pred_val, levels = c("yes", "no"))
+    
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = y_pred_val, reference = val_data$deposit)
+    accuracy <- conf_matrix$overall['Accuracy']
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    accuracies[i] <- accuracy
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+    auc_values[i] <- auc_value
+}
+
+# Calculate average AUC value for cross-validation
+avg_auc <- mean(auc_values)
+
+# Evaluate model performance on test data
+evaluate_on_test_data <- function(model, formula, test_data) {
+    # Predict probabilities on test data
+    y_pred_prob <- predict(model, newdata = test_data, type = "response")
+    
+    # Compute ROC curve
+    roc_curve <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob)
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on test data
+    y_pred_test <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    
+    # Convert to factor with levels "yes" and "no"
+    y_pred_test <- factor(y_pred_test, levels = c("yes", "no"))
+    
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = y_pred_test, reference = test_data$deposit)
+    
+    
+}
+
+# Call evaluate_on_test_data function
+evaluate_on_test_data(logit_fit, formula, test_data)
+
+# Save metrics in a list
+cv_metrics <- list(Accuracy = conf_matrix$overall['Accuracy'], Precision = conf_matrix$byClass['Pos Pred Value'], Recall = conf_matrix$byClass['Sensitivity'], F1_Score = conf_matrix$byClass['F1'], AUC_ROC = auc_value)
+
+# Create a table for evaluation metrics
+metrics_table <- data.frame(Model = c("Baseline (All Variables)", "Bootstrapping", "5-Fold Cross-Validation"),
+                            Accuracy = c(baseline_metrics$Accuracy, bootstrap_metrics$Accuracy, cv_metrics$Accuracy),
+                            Precision = c(baseline_metrics$Precision, bootstrap_metrics$Precision, cv_metrics$Precision),
+                            Recall = c(baseline_metrics$Recall, bootstrap_metrics$Recall, cv_metrics$Recall),
+                            F1_Score = c(baseline_metrics$F1_Score, bootstrap_metrics$F1_Score, cv_metrics$F1_Score),
+                            AUC_ROC = c(baseline_metrics$AUC_ROC, bootstrap_metrics$AUC_ROC, cv_metrics$AUC_ROC))
+
+# Print the table
+print("Evaluation Metrics for Logistic Regression Models:")
+print(metrics_table)
+
+
+```
+
+
+
+
+
+
+
+#### **Logistic Regression Model Performance on test data with Bootstrapping (Confidence Intervals)**
+
+
+The logistic regression model, evaluated with bootstrapping on the test data, demonstrates an average accuracy of 82.01% (CI: [81.40%, 82.44%]). The average precision is 81.32% (CI: [80.29%, 82.09%]), and the average recall is 85.23% (CI: [84.37%, 86.23%]). The F1 score, a harmonic mean of precision and recall, stands at 83.22% (CI: [82.72%, 83.63%]). Moreover, the average AUC, a measure of the model's ability to distinguish between positive and negative cases, is 90.14% (CI: [89.71%, 90.63%]). These results indicate the model's reliability and consistency in predictive performance, as well as its ability to generalize effectively to unseen data, reinforced by bootstrapping techniques.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Logistic Regression with bootstrapping
+
+# Function to perform bootstrapping and evaluate model performance for logistic regression
+bootstrap_evaluation_logistic <- function(data, formula, test_data, n_bootstraps = 100, alpha = 0.05) {
+  # Initialize matrices to store evaluation metrics for each bootstrap sample
+  accuracies <- numeric(n_bootstraps)
+  precisions <- numeric(n_bootstraps)
+  recalls <- numeric(n_bootstraps)
+  f1_scores <- numeric(n_bootstraps)
+  auc_values <- numeric(n_bootstraps)
+  
+  # Loop through bootstraps
+  for (i in 1:n_bootstraps) {
+    # Generate bootstrap sample
+    boot_data <- data[sample(nrow(data), replace = TRUE), ]
+    
+    # Train logistic regression model
+    logit_model <- glm(formula, data = boot_data, family = "binomial")
+    
+    # Predict probabilities on test data
+    y_pred_prob <- predict(logit_model, newdata = test_data, type = "response")
+    
+    # Compute ROC curve
+    roc_curve <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob)
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on test data
+    y_pred_test <- ifelse(y_pred_prob > 0.5, "yes", "no")
+
+    # Ensure consistent levels for 'deposit' variable
+    y_pred_test <- factor(y_pred_test, levels = levels(test_data$deposit))
+
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = y_pred_test, reference = test_data$deposit)
+
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+    auc_values[i] <- auc_value
+    
+    # Calculate accuracy
+    accuracies[i] <- conf_matrix$overall['Accuracy']
+  }
+  
+  # Calculate average evaluation metrics
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  avg_auc <- mean(auc_values)
+  
+  # Calculate confidence intervals
+  ci_accuracy <- quantile(accuracies, c(alpha / 2, 1 - alpha / 2))
+  ci_precision <- quantile(precisions, c(alpha / 2, 1 - alpha / 2))
+  ci_recall <- quantile(recalls, c(alpha / 2, 1 - alpha / 2))
+  ci_f1_score <- quantile(f1_scores, c(alpha / 2, 1 - alpha / 2))
+  ci_auc <- quantile(auc_values, c(alpha / 2, 1 - alpha / 2))
+  
+  # Print average evaluation metrics and confidence intervals
+  print("Evaluation Metrics of Logistic Regression with bootstrapping on Test data:")
+  print(paste("Average Accuracy:", avg_accuracy))
+  print(paste("Confidence Interval (Accuracy): [", ci_accuracy[1], ", ", ci_accuracy[2], "]"))
+  print(paste("Average Precision:", avg_precision))
+  print(paste("Confidence Interval (Precision): [", ci_precision[1], ", ", ci_precision[2], "]"))
+  print(paste("Average Recall:", avg_recall))
+  print(paste("Confidence Interval (Recall): [", ci_recall[1], ", ", ci_recall[2], "]"))
+  print(paste("Average F1 Score:", avg_f1_score))
+  print(paste("Confidence Interval (F1 Score): [", ci_f1_score[1], ", ", ci_f1_score[2], "]"))
+  print(paste("Average AUC:", avg_auc))
+  print(paste("Confidence Interval (AUC): [", ci_auc[1], ", ", ci_auc[2], "]"))
+  # Plot ROC curve (optional)
+  #plot(roc_curve, main = "Average ROC Curve", col = "blue")
+}
+
+# Define formula
+formula <- deposit ~ .
+
+# Perform bootstrapping and evaluate model performance for logistic regression
+bootstrap_evaluation_logistic(train_data, formula, test_data, n_bootstraps = 100, alpha = 0.05)
+
+# Plot ROC curve
+#plot(roc_curve, main = "ROC Curve", col = "blue")
+
+```
+
+
+
+#### **Logistic Regression Model Performance with 5-Fold Cross-Validation on held-out fold and Test Data **
+
+
+The logistic regression model, evaluated using 5-fold cross-validation on the held-out fold, demonstrates an average accuracy of 82.72%, with average precision and recall at 82.23% and 85.77%, respectively. The F1 score, a balanced measure of precision and recall, stands at 83.74%, with an AUC of 90.57%. On the test data, the logistic regression model maintains its effectiveness with an accuracy of 81.91%, achieving a precision of 81.49% and recall of 84.65%, resulting in an F1 score of 82.91% and an AUC of 90.22%. These results indicate the model's consistency in performance across different subsets of data and its ability to generalize well to unseen data. While logistic regression provides a reasonable baseline for classification tasks, its performance metrics are slightly lower compared to more complex models like Random Forest.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#### Logistic Regression - 5-Fold Cross Validation with all predictors
+
+
+# Define formula
+formula <- deposit ~ .
+
+# Define 5-fold cross-validation
+folds <- vfold_cv(train_data, v = 5)
+
+# Initialize matrices to store evaluation metrics for each fold
+accuracies <- numeric(5)
+precisions <- numeric(5)
+recalls <- numeric(5)
+f1_scores <- numeric(5)
+auc_values <- numeric(5)
+
+# Perform 5-fold cross-validation
+for (i in 1:5) {
+    # Split data into train and test sets for the current fold
+    fold_data <- training(folds$splits[[i]])
+    val_data <- testing(folds$splits[[i]])
+    
+    # Train logistic regression model
+    logit_fit <- glm(formula, data = fold_data, family = binomial())
+    
+    # Predict probabilities on validation data
+    y_pred_prob <- predict(logit_fit, newdata = val_data, type = "response")
+    
+    # Compute ROC curve
+    roc_curve <- roc(ifelse(val_data$deposit == "yes", 1, 0), y_pred_prob)
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on validation data
+    y_pred_val <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    
+    # Convert to factor with levels "yes" and "no"
+    y_pred_val <- factor(y_pred_val, levels = c("yes", "no"))
+    
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = y_pred_val, reference = val_data$deposit)
+    accuracy <- conf_matrix$overall['Accuracy']
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    accuracies[i] <- accuracy
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+    auc_values[i] <- auc_value
+}
+
+# Display evaluation metrics for cross-validation
+print("Evaluation Metrics of Logistic Regression with 5-Fold Cross-Validation on held-out fold:")
+print(paste("Average Accuracy:", mean(accuracies)))
+print(paste("Average Precision:", mean(precisions)))
+print(paste("Average Recall:", mean(recalls)))
+print(paste("Average F1 Score:", mean(f1_scores)))
+
+# Calculate average AUC value for cross-validation
+avg_auc <- mean(auc_values)
+print(paste("Average AUC:", avg_auc))
+
+# Evaluate model performance on test data
+evaluate_on_test_data <- function(model, formula, test_data) {
+    # Predict probabilities on test data
+    y_pred_prob <- predict(model, newdata = test_data, type = "response")
+    
+    # Compute ROC curve
+    roc_curve <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob)
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on test data
+    y_pred_test <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    
+    # Convert to factor with levels "yes" and "no"
+    y_pred_test <- factor(y_pred_test, levels = c("yes", "no"))
+    
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = y_pred_test, reference = test_data$deposit)
+    
+    # Print evaluation metrics for test data
+    print("Evaluation Metrics of Logistic Regression with 5-Fold Cross-Validation on Test data:")
+    print(paste("Test Accuracy:", conf_matrix$overall['Accuracy']))
+    print(paste("Precision:", conf_matrix$byClass['Pos Pred Value']))
+    print(paste("Recall:", conf_matrix$byClass['Sensitivity']))
+    print(paste("F1 Score:", conf_matrix$byClass['F1']))
+    print(paste("ROC AUC:", auc_value))
+    
+    # Plot ROC curve for test data
+    #plot(roc_curve, main = "ROC Curve for Test Data", col = "blue")
+    #legend("bottomright", legend = paste("AUC =", round(auc_value, 2)), col = "blue", lty = 1, cex = 0.8)
+}
+
+# Call evaluate_on_test_data function
+evaluate_on_test_data(logit_fit, formula, test_data)
+
+```
+
+
+
+#### **Performance Evaluation on test data Using Resampling Techniques -  Support Vector Machine**
+
+In assessing model performance through bootstrapping and 5-fold cross-validation, we analyze the results of Support Vector Machine (SVM) models:
+
+- **SVM Baseline**: The baseline SVM model achieves an accuracy of 83.67%, with a precision of 84.40% and recall of 81.88%. It demonstrates a balanced F1 score of 83.12% and a strong discriminatory capability with an AUC-ROC value of 91.11%.
+
+- **SVM Bootstrapping**: Employing bootstrapping for evaluation yields results comparable to the baseline SVM model. The bootstrapped SVM model maintains a high accuracy of 83.26% along with commendable precision (83.98%), recall (84.04%), and F1 score (84.01%). The AUC-ROC value of 90.96% indicates robust discrimination, consistent with the baseline performance.
+
+- **SVM 5-Fold Cross-Validation**: Utilizing 5-fold cross-validation for evaluation yields performance metrics closely aligned with the baseline and bootstrapping approaches. With an accuracy of 83.34%, the cross-validated SVM model demonstrates strong precision (84.16%), recall (83.97%), and F1 score (84.06%). The AUC-ROC of 90.96% further validates its discriminatory power.
+
+In summary, both bootstrapping and 5-fold cross-validation techniques provide reliable estimates of SVM model performance, consistently reaffirming the efficacy of the baseline model. These resampling methods offer robust assessments of model generalization, guiding decisions in real-world applications.
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+
+# SVM Baseline
+# Train SVM model with probability = TRUE for Platt scaling
+svm_model_baseline <- svm(formula, data = train_data, kernel = "radial", probability = TRUE)
+
+# Make predictions on test data
+predictions_baseline <- predict(svm_model_baseline, newdata = test_data)
+
+# Evaluate the model
+accuracy_baseline <- sum(predictions_baseline == test_data$deposit) / length(test_data$deposit)
+conf_matrix_baseline <- table(predictions_baseline, test_data$deposit)
+precision_baseline <- conf_matrix_baseline[2, 2] / sum(conf_matrix_baseline[, 2])
+recall_baseline <- conf_matrix_baseline[2, 2] / sum(conf_matrix_baseline[2, ])
+f1_score_baseline <- 2 * (precision_baseline * recall_baseline) / (precision_baseline + recall_baseline)
+
+# Obtain probabilities for test data
+probabilities_baseline <- predict(svm_model_baseline, newdata = test_data, probability = TRUE)
+
+# Prepare prediction object for ROCR
+prediction_obj_baseline <- prediction(attr(probabilities_baseline, "probabilities")[,2], test_data$deposit)
+
+# Calculate AUC
+auc_baseline <- performance(prediction_obj_baseline, "auc")@y.values[[1]]
+
+baseline_metrics = list(Accuracy = accuracy_baseline, Precision = precision_baseline, Recall = recall_baseline, F1_Score = f1_score_baseline, AUC_ROC = auc_baseline)
+
+
+# Modify the bootstrap_evaluation_svm function to return the metrics
+bootstrap_evaluation_svm <- function(data, formula, test_data, n_bootstraps = 50, alpha = 0.05) {
+  # Initialize vectors to store evaluation metrics for each bootstrap sample
+  accuracies <- numeric(n_bootstraps)
+  precisions <- numeric(n_bootstraps)
+  recalls <- numeric(n_bootstraps)
+  f1_scores <- numeric(n_bootstraps)
+  auc_values <- numeric(n_bootstraps)
+  
+  # Loop through bootstraps
+  for (i in 1:n_bootstraps) {
+    # Generate bootstrap sample
+    boot_data <- data[sample(nrow(data), replace = TRUE), ]
+    
+    # Train SVM model
+    svm_model <- svm(formula, data = boot_data, kernel = "radial", probability = TRUE)
+    
+    # Predict probabilities on test data
+    y_pred_prob <- attr(predict(svm_model, newdata = test_data, probability = TRUE), "probabilities")[, "yes"]
+    
+    # Calculate evaluation metrics
+    y_pred <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    y_pred <- factor(y_pred, levels = levels(test_data$deposit))  # Ensure consistent levels
+    conf_matrix <- confusionMatrix(data = y_pred, reference = test_data$deposit)
+    accuracies[i] <- conf_matrix$overall['Accuracy']
+    precisions[i] <- conf_matrix$byClass['Pos Pred Value']
+    recalls[i] <- conf_matrix$byClass['Sensitivity']
+    f1_scores[i] <- conf_matrix$byClass['F1']
+    
+    # Calculate AUC
+    roc_curve <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob)
+    auc_values[i] <- auc(roc_curve)
+  }
+  
+  # Calculate average evaluation metrics
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  avg_auc <- mean(auc_values)
+  
+  # Return the metrics
+  return(list(Accuracy = avg_accuracy, Precision = avg_precision, Recall = avg_recall, F1_Score = avg_f1_score, AUC_ROC = avg_auc))
+}
+
+# Call bootstrap_evaluation_svm
+svm_bootstrap_metrics <- bootstrap_evaluation_svm(train_data, formula, test_data)
+
+# Modify the svm_cv_evaluation function to return the metrics
+svm_cv_evaluation <- function(train_data, formula, test_data) {
+  # Initialize vectors to store evaluation metrics for each fold
+  accuracies <- numeric(5)
+  precisions <- numeric(5)
+  recalls <- numeric(5)
+  f1_scores <- numeric(5)
+  auc_rocs <- numeric(5)
+  
+  # Perform 5-fold cross-validation
+  for (fold in 1:5) {
+    # Split data into train and validation sets for this fold
+    val_indices <- ((fold - 1) * floor(nrow(train_data)/5) + 1):(fold * floor(nrow(train_data)/5))
+    val_data <- train_data[val_indices, ]
+    train_data_fold <- train_data[-val_indices, ]
+    
+    # Train SVM model
+    svm_model <- svm(formula, data = train_data_fold, kernel = "radial", probability = TRUE)
+    
+    # Predict probabilities on validation data
+    y_pred_prob <- attr(predict(svm_model, newdata = val_data, probability = TRUE), "probabilities")[, "yes"]
+    
+    # Predict on validation data
+    y_pred <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    
+    # Convert predicted values to factor with correct levels
+    y_pred <- factor(y_pred, levels = levels(val_data$deposit))
+    
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = y_pred, reference = val_data$deposit)
+    accuracies[fold] <- conf_matrix$overall['Accuracy']
+    precisions[fold] <- conf_matrix$byClass['Pos Pred Value']
+    recalls[fold] <- conf_matrix$byClass['Sensitivity']
+    f1_scores[fold] <- conf_matrix$byClass['F1']
+    
+    # Calculate AUC-ROC
+    roc_curve <- roc(ifelse(val_data$deposit == "yes", 1, 0), y_pred_prob)
+    auc_rocs[fold] <- auc(roc_curve)
+  }
+  
+  # Calculate average evaluation metrics
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  avg_auc_roc <- mean(auc_rocs)
+  
+  evaluate_on_test_data(svm_model, formula, test_data)
+}
+
+
+# Modify the evaluate_on_test_data function to return the metrics
+evaluate_on_test_data <- function(svm_model, formula, test_data) {
+  # Predict probabilities on test data
+  y_pred_prob <- attr(predict(svm_model, newdata = test_data, probability = TRUE), "probabilities")[, "yes"]
+  
+  # Predict on test data
+  y_pred <- ifelse(y_pred_prob > 0.5, "yes", "no")
+  
+  # Convert predicted values to factor with correct levels
+  y_pred <- factor(y_pred, levels = levels(test_data$deposit))
+  
+  # Calculate evaluation metrics
+  conf_matrix <- confusionMatrix(data = y_pred, reference = test_data$deposit)
+  
+  # Calculate test accuracy
+  test_accuracy <- conf_matrix$overall['Accuracy']
+  
+  # Extract precision, recall, and F1 score
+  test_precision <- conf_matrix$byClass['Pos Pred Value']
+  test_recall <- conf_matrix$byClass['Sensitivity']
+  test_f1_score <- conf_matrix$byClass['F1']
+  
+  # Calculate AUC-ROC for test data
+  roc_curve_test <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob)
+  
+  # Calculate ROC AUC for test data
+  auc_test <- auc(roc_curve_test)
+  
+  # Return the metrics
+  return(list(Accuracy = test_accuracy, Precision = test_precision, Recall = test_recall, F1_Score = test_f1_score, ROC_AUC = auc_test))
+}
+
+# Call svm_cv_evaluation
+svm_cv_metrics <- svm_cv_evaluation(train_data, formula, test_data)
+
+
+```
+```{r echo=FALSE}
+
+svm_cv_auc <- svm_cv_metrics$ROC_AUC
+
+# Modify the data frame construction
+metrics_df <- data.frame(
+  Model = c("SVM Baseline", "SVM Bootstrap", "SVM 5-fold CV"),
+  Accuracy = c(baseline_metrics$Accuracy, svm_bootstrap_metrics$Accuracy, svm_cv_metrics$Accuracy),
+  Precision = c(baseline_metrics$Precision, svm_bootstrap_metrics$Precision, svm_cv_metrics$Precision),
+  Recall = c(baseline_metrics$Recall, svm_bootstrap_metrics$Recall, svm_cv_metrics$Recall),
+  F1_Score = c(baseline_metrics$F1_Score, svm_bootstrap_metrics$F1_Score, svm_cv_metrics$F1_Score),
+  AUC_ROC = c(baseline_metrics$AUC_ROC, svm_bootstrap_metrics$AUC_ROC, svm_cv_auc)
+)
+print("Evaulation Metrics of Support Vector Machine:")
+metrics_df
+
+```
+
+
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, eval=FALSE, include=FALSE}
+
+# SVM 
+
+# Define formula for SVM
+formula <- deposit ~ .
+
+
+# Train SVM model with probability = TRUE for Platt scaling
+svm_model <- svm(formula, data = train_data, kernel = "radial", probability = TRUE)
+
+# Make predictions on test data
+predictions <- predict(svm_model, newdata = test_data)
+
+# Evaluate the model
+accuracy <- sum(predictions == test_data$deposit) / length(test_data$deposit)
+conf_matrix <- table(predictions, test_data$deposit)
+precision <- conf_matrix[2, 2] / sum(conf_matrix[, 2])
+recall <- conf_matrix[2, 2] / sum(conf_matrix[2, ])
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+# Print evaluation metrics
+print("Evaluation Metrics of Support Vector Machine(SVM) on Test data:")
+print(paste("Accuracy:", accuracy))
+print(paste("Precision:", precision))
+print(paste("Recall:", recall))
+print(paste("F1 Score:", f1_score))
+
+# Obtain probabilities for test data
+probabilities <- predict(svm_model, newdata = test_data, probability = TRUE)
+
+# Prepare prediction object for ROCR
+prediction_obj <- prediction(attr(probabilities, "probabilities")[,2], test_data$deposit)
+
+# Calculate AUC
+auc <- performance(prediction_obj, "auc")@y.values[[1]]
+
+# Print AUC
+print(paste("ROC AUC:", auc))
+
+```
+
+
+#### ** Support Vector Machine Model Performance on test data with Bootstrapping (Confidence Intervals)**
+
+The bootstrapping process, involving 100 resampled iterations of the training data, provides a robust evaluation framework for our SVM model. The average accuracy of 83.28% underscores its consistent performance, with confidence intervals between 82.80% and 83.90%. Precision, averaging 84.14%, assures us of the model's ability to accurately identify positive instances, with confidence bounds between 83.31% and 85.02%. Additionally, the model's average recall of 83.88% indicates its proficiency in capturing most positive cases, with confidence intervals ranging from 83.14% to 84.46%. The harmonic mean of precision and recall, reflected in the F1 score averaging 84.01%, ensures a balanced performance in classification tasks, with confidence bounds between 83.61% and 84.50%. Furthermore, the impressive average AUC of 90.95% with confidence bounds between 90.80% and 91.05% signifies strong discriminatory power, confirming the model's efficacy in distinguishing between positive and negative instances. These results, evaluated on the test data, validate the SVM model's reliability and suitability for real-world applications.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+## SVM with bootstrapping
+
+# Function to perform bootstrapping and evaluate model performance for SVM
+bootstrap_evaluation_svm <- function(data, formula, test_data, n_bootstraps = 50, alpha = 0.05) {
+  # Initialize vectors to store evaluation metrics for each bootstrap sample
+  accuracies <- numeric(n_bootstraps)
+  precisions <- numeric(n_bootstraps)
+  recalls <- numeric(n_bootstraps)
+  f1_scores <- numeric(n_bootstraps)
+  auc_values <- numeric(n_bootstraps)
+  tprs <- numeric(n_bootstraps)
+  fprs <- numeric(n_bootstraps)
+  
+  # Loop through bootstraps
+  for (i in 1:n_bootstraps) {
+    # Generate bootstrap sample
+    boot_data <- data[sample(nrow(data), replace = TRUE), ]
+    
+    # Train SVM model
+    svm_model <- svm(formula, data = boot_data, kernel = "radial", probability = TRUE)
+    
+    # Predict probabilities on test data
+    y_pred_prob <- attr(predict(svm_model, newdata = test_data, probability = TRUE), "probabilities")[, "yes"]
+    
+    # Calculate True Positive Rate (TPR) and False Positive Rate (FPR)
+    pred <- prediction(y_pred_prob, test_data$deposit)
+    perf <- performance(pred, "tpr", "fpr")
+    tprs[i] <- unlist(perf@y.values)[[1]]
+    fprs[i] <- unlist(perf@x.values)[[1]]
+    
+    # Calculate evaluation metrics
+    y_pred <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    y_pred <- factor(y_pred, levels = levels(test_data$deposit))  # Ensure consistent levels
+    conf_matrix <- confusionMatrix(data = y_pred, reference = test_data$deposit)
+    accuracies[i] <- conf_matrix$overall['Accuracy']
+    precisions[i] <- conf_matrix$byClass['Pos Pred Value']
+    recalls[i] <- conf_matrix$byClass['Sensitivity']
+    f1_scores[i] <- conf_matrix$byClass['F1']
+    
+    # Calculate AUC
+    auc_values[i] <- performance(pred, "auc")@y.values[[1]]
+  }
+  
+  # Calculate average evaluation metrics
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  avg_auc <- mean(auc_values)
+  
+  # Calculate confidence intervals
+  ci_accuracy <- quantile(accuracies, c(alpha / 2, 1 - alpha / 2))
+  ci_precision <- quantile(precisions, c(alpha / 2, 1 - alpha / 2))
+  ci_recall <- quantile(recalls, c(alpha / 2, 1 - alpha / 2))
+  ci_f1_score <- quantile(f1_scores, c(alpha / 2, 1 - alpha / 2))
+  ci_auc <- quantile(auc_values, c(alpha / 2, 1 - alpha / 2))
+  
+  # Calculate average TPR and FPR across all iterations
+  avg_tpr <- mean(tprs)
+  avg_fpr <- mean(fprs)
+  
+  # Plot ROC curve using average TPR and FPR
+  plot_roc_curve(avg_tpr, avg_fpr)
+  
+  # Print average evaluation metrics and confidence intervals
+  print("Evaluation Metrics of Support Vector Machine(SVM) with bootstrapping on Test data:")
+  print(paste("Average Accuracy:", avg_accuracy))
+  print(paste("Confidence Interval (Accuracy): [", ci_accuracy[1], ", ", ci_accuracy[2], "]"))
+  print(paste("Average Precision:", avg_precision))
+  print(paste("Confidence Interval (Precision): [", ci_precision[1], ", ", ci_precision[2], "]"))
+  print(paste("Average Recall:", avg_recall))
+  print(paste("Confidence Interval (Recall): [", ci_recall[1], ", ", ci_recall[2], "]"))
+  print(paste("Average F1 Score:", avg_f1_score))
+  print(paste("Confidence Interval (F1 Score): [", ci_f1_score[1], ", ", ci_f1_score[2], "]"))
+  print(paste("Average AUC:", avg_auc))
+  print(paste("Confidence Interval (AUC): [", ci_auc[1], ", ", ci_auc[2], "]"))
+  
+  # Plot ROC curve using average TPR and FPR
+  #plot_roc_curve(avg_tpr, avg_fpr)
+  
+}
+  
+# Function to plot ROC curve
+plot_roc_curve <- function(avg_tpr, avg_fpr) {
+  data <- data.frame(FPR = avg_fpr, TPR = avg_tpr)
+  ggplot(data, aes(x = FPR, y = TPR)) +
+    geom_line(color = "blue") +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+    labs(title = "ROC Curve", x = "False Positive Rate", y = "True Positive Rate")
+
+}
+
+# Call bootstrap_evaluation_svm function
+bootstrap_evaluation_svm(train_data, formula, test_data, n_bootstraps = 50, alpha = 0.05)
+
+```
+
+
+#### **Support Vector Machine Model Performance with 5-Fold Cross-Validation on held-out fold and Test Data **
+
+
+The Support Vector Machine (SVM) model, evaluated using 5-fold cross-validation on the held-out fold, demonstrates an average accuracy of 83.59%, with average precision and recall at 84.30% and 84.63%, respectively. The F1 score, a balanced measure of precision and recall, stands at 84.47%. On the test data, the SVM model maintains its effectiveness with an accuracy of 83.34%. It achieves a precision of 84.16% and recall of 83.97%, resulting in an F1 score of 84.03% with an impressive average AUC of 90.96%. These results indicate the model's reliability and consistency in predictive performance across different subsets of data. The SVM model shows promising performance in accurately classifying instances into their respective categories, suggesting its suitability for the classification task at hand.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# SVM with 5-fold Cross Validation and evaluating on the test_data
+
+# Function to perform 5-fold cross-validation for SVM and evaluate on test_data
+svm_cv_evaluation <- function(train_data, formula, test_data) {
+  # Initialize vectors to store evaluation metrics for each fold
+  accuracies <- numeric(5)
+  precisions <- numeric(5)
+  recalls <- numeric(5)
+  f1_scores <- numeric(5)
+  
+  # Initialize matrix to store predictions for ROC curve
+  all_pred <- matrix(NA, nrow = nrow(train_data), ncol = 5)
+  all_labels <- train_data$deposit
+  
+  # Perform 5-fold cross-validation
+  for (fold in 1:5) {
+    # Split data into train and validation sets for this fold
+    val_indices <- ((fold - 1) * floor(nrow(train_data)/5) + 1):(fold * floor(nrow(train_data)/5))
+    val_data <- train_data[val_indices, ]
+    train_data_fold <- train_data[-val_indices, ]
+    
+    # Train SVM model
+    svm_model <- svm(formula, data = train_data_fold, kernel = "radial", probability = TRUE)
+    
+    # Predict probabilities on validation data
+    y_pred_prob <- attr(predict(svm_model, newdata = val_data, probability = TRUE), "probabilities")[, "yes"]
+    
+    # Store predictions for ROC curve
+    all_pred[val_indices, fold] <- y_pred_prob
+    
+    # Predict on validation data
+    y_pred <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    
+    # Convert predicted values to factor with correct levels
+    y_pred <- factor(y_pred, levels = levels(val_data$deposit))
+    
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = y_pred, reference = val_data$deposit)
+    accuracies[fold] <- conf_matrix$overall['Accuracy']
+    precisions[fold] <- conf_matrix$byClass['Pos Pred Value']
+    recalls[fold] <- conf_matrix$byClass['Sensitivity']
+    f1_scores[fold] <- conf_matrix$byClass['F1']
+  }
+  
+  # Calculate average evaluation metrics
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  
+  # Print average evaluation metrics
+  print("Evaluation Metrics of Support Vector Machine(SVM) with 5-fold Cross-Validation on held-out fold:")
+  print("Average Evaluation Metrics on Validation Data:")
+  print(paste("Average Accuracy:", avg_accuracy))
+  print(paste("Average Precision:", avg_precision))
+  print(paste("Average Recall:", avg_recall))
+  print(paste("Average F1 Score:", avg_f1_score))
+  
+  # Evaluate model on separate test dataset
+  evaluate_on_test_data(svm_model, formula, test_data)
+}
+
+
+# Function to evaluate the model on separate test dataset
+evaluate_on_test_data <- function(svm_model, formula, test_data) {
+  # Predict probabilities on test data
+  y_pred_prob <- attr(predict(svm_model, newdata = test_data, probability = TRUE), "probabilities")[, "yes"]
+  
+  # Predict on test data
+  y_pred <- ifelse(y_pred_prob > 0.5, "yes", "no")
+  
+  # Convert predicted values to factor with correct levels
+  y_pred <- factor(y_pred, levels = levels(test_data$deposit))
+  
+  # Calculate evaluation metrics
+  conf_matrix <- confusionMatrix(data = y_pred, reference = test_data$deposit)
+  
+  # Calculate test accuracy
+  test_accuracy <- conf_matrix$overall['Accuracy']
+  
+  # Extract precision, recall, and F1 score
+  test_precision <- conf_matrix$byClass['Pos Pred Value']
+  test_recall <- conf_matrix$byClass['Sensitivity']
+  test_f1_score <- conf_matrix$byClass['F1']
+  
+  # Print evaluation metrics for test data
+  print("Evaluation Metrics on Test Data:")
+  print(paste("Test Accuracy:", test_accuracy))
+  print(paste("Precision:", test_precision))
+  print(paste("Recall:", test_recall))
+  print(paste("F1 Score:", test_f1_score))
+  
+  # Calculate AUC-ROC for test data
+  roc_curve_test <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob)
+  
+  # Plot ROC curve for test data
+  #plot(roc_curve_test, main = "ROC Curve for Test Data", col = "blue")
+  
+  # Calculate ROC AUC for test data
+  auc_test <- auc(roc_curve_test)
+  print(paste("ROC AUC for Test Data:", auc_test))
+}
+
+# Define formula
+formula <- deposit ~ .
+
+# Call svm_cv_evaluation function with your train data and test data for evaluation
+svm_cv_evaluation(train_data, formula, test_data)
+
+```
+
+
+
+
+#### **Performance Evaluation on test data Using Resampling Techniques - Decision Trees**
+
+In evaluating the Decision Tree models through bootstrapping and 5-fold cross-validation, we observe the following:
+
+- **Baseline Model**: The Decision Tree model trained on all variables demonstrates a stable accuracy of 80.95%, with precision and recall at 80.86% and 78.63%, respectively. The F1 score, a balanced measure of precision and recall, stands at 79.73%, with an AUC-ROC of 83.82%.
+
+- **5-Fold Cross-Validation**: The Decision Tree model evaluated using 5-fold cross-validation exhibits an accuracy of 80.11%, achieving a higher precision of 82.53% compared to the baseline. The recall and F1 score are consistent with the baseline, indicating robust performance, with an AUC-ROC of 82.27%.
+
+- **Bootstrapping**: Employing bootstrapping for model evaluation yields results comparable to the baseline. The bootstrapped Decision Tree model maintains an accuracy of 80.52% and precision of 81.83%. Notably, the model's recall improves to 80.83%, resulting in a balanced F1 score of 81.28%. The AUC-ROC of 83.46% indicates robust discriminatory capability.
+
+In summary, both bootstrapping and 5-fold cross-validation techniques provide reliable estimates of model performance, consistently reaffirming the efficacy of the Decision Tree model. These resampling methods offer robust assessments of model generalization and can guide decision-making in deploying the model for real-world applications.
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+##TABLE-DT
+
+# Decision Tree Baseline
+
+decision_tree_model <- rpart(deposit ~ ., data = train_data, method = "class")
+predictions_dt_baseline <- predict(decision_tree_model, newdata = test_data, type = "prob")[, 2]
+roc_curve_dt_baseline <- roc(test_data$deposit, predictions_dt_baseline)
+auc_dt_baseline <- auc(roc_curve_dt_baseline)
+conf_matrix_dt_baseline <- table(Actual = test_data$deposit, Predicted = ifelse(predictions_dt_baseline > 0.5, "yes", "no"))
+accuracy_dt_baseline <- sum(diag(conf_matrix_dt_baseline)) / sum(conf_matrix_dt_baseline)
+precision_dt_baseline <- conf_matrix_dt_baseline[2, 2] / sum(conf_matrix_dt_baseline[, 2])
+recall_dt_baseline <- conf_matrix_dt_baseline[2, 2] / sum(conf_matrix_dt_baseline[2, ])
+f1_score_dt_baseline <- 2 * (precision_dt_baseline * recall_dt_baseline) / (precision_dt_baseline + recall_dt_baseline)
+
+# Function for Decision Tree Bootstrapping
+dt_bootstrap_evaluation <- function(data, formula, test_data, n_bootstraps = 100, alpha = 0.05) {
+  # Initialize matrices to store evaluation metrics for each bootstrap sample
+  accuracies <- numeric(n_bootstraps)
+  precisions <- numeric(n_bootstraps)
+  recalls <- numeric(n_bootstraps)
+  f1_scores <- numeric(n_bootstraps)
+  auc_values <- numeric(n_bootstraps)
+  
+  # Loop through bootstraps
+  for (i in 1:n_bootstraps) {
+    # Generate bootstrap sample
+    boot_data <- data[sample(nrow(data), replace = TRUE), ]
+    
+    # Train Decision Tree model
+    dt_model <- rpart(formula, data = boot_data, method = "class")
+    
+    # Predict probabilities on test data
+    y_pred_prob <- predict(dt_model, newdata = test_data, type = "prob")[, 2]
+    
+    # Compute ROC curve
+    roc_curve <- roc(test_data$deposit, y_pred_prob)
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on test data
+    y_pred_test <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = factor(y_pred_test, levels = levels(test_data$deposit)), 
+                                   reference = test_data$deposit)
+    accuracy <- conf_matrix$overall['Accuracy']
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    accuracies[i] <- accuracy
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+    auc_values[i] <- auc_value
+  }
+  
+  # Calculate average evaluation metrics
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  avg_auc <- mean(auc_values)
+  
+  
+  # Return the metrics
+  return(list(Accuracy = avg_accuracy, Precision = avg_precision, Recall = avg_recall, F1_Score = avg_f1_score, AUC_ROC = avg_auc))
+}
+
+# Call dt_bootstrap_evaluation function
+dt_bootstrap_metrics <- dt_bootstrap_evaluation(train_data, formula, test_data, n_bootstraps = 100, alpha = 0.05)
+
+# Decision Tree 5-fold Cross-Validation
+dt_cv_evaluation <- function(train_data, formula, test_data) {
+  # Define 5-fold cross-validation
+  folds <- vfold_cv(train_data, v = 5)
+  
+  # Initialize matrices to store evaluation metrics for each fold
+  accuracies <- numeric(5)
+  precisions <- numeric(5)
+  recalls <- numeric(5)
+  f1_scores <- numeric(5)
+
+  # Perform 5-fold cross-validation
+  for (i in 1:5) {
+    # Split data into train and test sets for the current fold
+    fold_data <- training(folds$splits[[i]])
+    val_data <- testing(folds$splits[[i]])
+    
+    # Train Decision Tree model
+    dt_model <- rpart(formula, data = fold_data, method = "class")
+    
+    # Predict probabilities on validation data
+    y_pred_prob <- predict(dt_model, newdata = val_data, type = "prob")[, 2]
+    
+    # Compute ROC curve
+    roc_curve <- roc(val_data$deposit, y_pred_prob)
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on validation data
+    y_pred_val <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    
+    # Calculate evaluation metrics for validation data
+    conf_matrix <- confusionMatrix(data = factor(y_pred_val, levels = levels(val_data$deposit)), 
+                                   reference = val_data$deposit)
+    accuracy <- conf_matrix$overall['Accuracy']
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    accuracies[i] <- accuracy
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+  }
+  
+  # Calculate average evaluation metrics for validation data
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  
+  # Predict probabilities on test data
+  y_pred_prob_test <- predict(dt_model, newdata = test_data, type = "prob")[, 2]
+  
+  # Predict on test data
+  y_pred_test <- ifelse(y_pred_prob_test > 0.5, "yes", "no")
+  
+  # Calculate evaluation metrics for test data
+  conf_matrix_test <- confusionMatrix(data = factor(y_pred_test, levels = levels(test_data$deposit)), 
+                                      reference = test_data$deposit)
+  
+  # Calculate test accuracy, precision, recall, and F1 score
+  test_accuracy <- conf_matrix_test$overall['Accuracy']
+  test_precision <- conf_matrix_test$byClass['Pos Pred Value']
+  test_recall <- conf_matrix_test$byClass['Sensitivity']
+  test_f1_score <- conf_matrix_test$byClass['F1']
+  
+  # Calculate ROC AUC for test data
+  roc_curve_test <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob_test)
+  auc_test <- auc(roc_curve_test)
+  
+  # Return the metrics
+  return(list(Accuracy = test_accuracy, Precision = test_precision, Recall = test_recall, F1_Score = test_f1_score, ROC_AUC = auc_test))
+}
+
+# Call dt_cv_evaluation function
+dt_cv_metrics <- dt_cv_evaluation(train_data, formula, test_data)
+
+# Create a data frame to store the metrics
+metrics_df <- data.frame(
+  Model = c("Decision Tree Baseline", "Decision Tree 5-fold CV", "Decision Tree Bootstrapping"),
+  Accuracy = c(accuracy_dt_baseline, dt_cv_metrics$Accuracy, dt_bootstrap_metrics$Accuracy),
+  Precision = c(precision_dt_baseline, dt_cv_metrics$Precision, dt_bootstrap_metrics$Precision),
+  Recall = c(recall_dt_baseline, dt_cv_metrics$Recall, dt_bootstrap_metrics$Recall),
+  F1_Score = c(f1_score_dt_baseline, dt_cv_metrics$F1_Score, dt_bootstrap_metrics$F1_Score),
+  AUC_ROC = c(auc_dt_baseline, dt_cv_metrics$ROC_AUC, dt_bootstrap_metrics$AUC_ROC)
+)
+
+# Print the table
+print(metrics_df)
+
+```
+
+
+
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, eval=FALSE, include=FALSE}
+
+
+## Decision Tree Model
+
+
+# Train the decision tree model
+decision_tree_model <- rpart(deposit ~ ., data = train_data, method = "class")
+
+# Make predictions on the test data
+predictions <- predict(decision_tree_model, newdata = test_data, type = "prob")[, 2]
+
+# Generate ROC curve
+roc_curve <- roc(test_data$deposit, predictions)
+
+# Smooth the ROC curve
+smoothed_roc_curve <- smooth(roc_curve, method = "binormal")
+
+# Plot smoothed ROC curve
+#plot(smoothed_roc_curve, main = "Smoothed ROC Curve for Decision Tree Model", col = "blue", lwd = 2, print.auc = TRUE)
+
+# Calculate AUC-ROC
+auc_roc <- auc(smoothed_roc_curve)
+print(paste("AUC-ROC:", auc_roc))
+
+
+# Confusion Matrix
+conf_matrix <- table(Actual = test_data$deposit, Predicted = ifelse(predictions > 0.5, "yes", "no"))
+print("Confusion Matrix:")
+print(conf_matrix)
+
+print("Evaluation Metrics of Decision Trees on the Test Data:")
+
+
+# Accuracy
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+print(paste("Accuracy:", accuracy))
+
+# Precision
+precision <- conf_matrix[2, 2] / sum(conf_matrix[, 2])
+print(paste("Precision:", precision))
+
+# Recall
+recall <- conf_matrix[2, 2] / sum(conf_matrix[2, ])
+print(paste("Recall:", recall))
+
+# F1 Score
+f1_score <- 2 * (precision * recall) / (precision + recall)
+print(paste("F1 Score:", f1_score))
+
+```
+
+
+
+
+#### **Decision Tree Model Performance on test data with Bootstrapping (Confidence Intervals)**
+
+The Decision Tree model, enhanced with bootstrapping, showcases robust performance across various evaluation metrics. On average, it achieves an accuracy of approximately 80.5%, with a 95% confidence interval ranging from 78.96% to 82.61%. Precision, indicating the proportion of correctly predicted positive cases, averages at 82.10%, with a confidence interval spanning from 78.06% to 86.33%. Recall, representing the model's ability to capture all positive cases, stands at 80.49%, with a confidence interval ranging from 75.93% to 85.48%. The F1 score, a harmonic mean of precision and recall, demonstrates strong performance, averaging at 81.23%, with a confidence interval between 79.41% and 83.00%. Furthermore, the model exhibits impressive discrimination ability, as reflected by an average AUC of 83.51%, with a confidence interval of 81.11% to 87.21%. These results underscore the effectiveness and reliability of the Decision Tree model in predicting term deposit subscriptions when augmented with bootstrapping.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Function to perform bootstrapping and evaluate model performance for Decision Tree
+dt_bootstrap_evaluation <- function(data, formula, test_data, n_bootstraps = 100, alpha = 0.05) {
+  # Initialize matrices to store evaluation metrics for each bootstrap sample
+  accuracies <- numeric(n_bootstraps)
+  precisions <- numeric(n_bootstraps)
+  recalls <- numeric(n_bootstraps)
+  f1_scores <- numeric(n_bootstraps)
+  auc_values <- numeric(n_bootstraps)
+  
+  # Loop through bootstraps
+  for (i in 1:n_bootstraps) {
+    # Generate bootstrap sample
+    boot_data <- data[sample(nrow(data), replace = TRUE), ]
+    
+    # Train Decision Tree model
+    dt_model <- rpart(formula, data = boot_data, method = "class")
+    
+    # Predict probabilities on test data
+    y_pred_prob <- predict(dt_model, newdata = test_data, type = "prob")[, 2]
+    
+    # Compute ROC curve
+    roc_curve <- roc(test_data$deposit, y_pred_prob)
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on test data
+    y_pred_test <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    
+    # Calculate evaluation metrics
+    conf_matrix <- confusionMatrix(data = factor(y_pred_test, levels = levels(test_data$deposit)), 
+                                   reference = test_data$deposit)
+    accuracy <- conf_matrix$overall['Accuracy']
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    accuracies[i] <- accuracy
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+    auc_values[i] <- auc_value
+  }
+  
+  # Calculate average evaluation metrics
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+  avg_auc <- mean(auc_values)
+  
+  # Calculate confidence intervals
+  ci_accuracy <- quantile(accuracies, c(alpha / 2, 1 - alpha / 2))
+  ci_precision <- quantile(precisions, c(alpha / 2, 1 - alpha / 2))
+  ci_recall <- quantile(recalls, c(alpha / 2, 1 - alpha / 2))
+  ci_f1_score <- quantile(f1_scores, c(alpha / 2, 1 - alpha / 2))
+  ci_auc <- quantile(auc_values, c(alpha / 2, 1 - alpha / 2))
+  
+  # Print average evaluation metrics and confidence intervals
+  print("Evaluation Metrics of Decision Tree Model with bootstrapping are: ")
+
+  # Print average evaluation metrics and confidence intervals
+  print(paste("Average Accuracy:", avg_accuracy))
+  print(paste("Confidence Interval (Accuracy): [", ci_accuracy[1], ", ", ci_accuracy[2], "]"))
+  print(paste("Average Precision:", avg_precision))
+  print(paste("Confidence Interval (Precision): [", ci_precision[1], ", ", ci_precision[2], "]"))
+  print(paste("Average Recall:", avg_recall))
+  print(paste("Confidence Interval (Recall): [", ci_recall[1], ", ", ci_recall[2], "]"))
+  print(paste("Average F1 Score:", avg_f1_score))
+  print(paste("Confidence Interval (F1 Score): [", ci_f1_score[1], ", ", ci_f1_score[2], "]"))
+  print(paste("Average AUC:", avg_auc))
+  print(paste("Confidence Interval (AUC): [", ci_auc[1], ", ", ci_auc[2], "]"))
+}
+
+# Define formula
+formula <- deposit ~ .
+
+# Perform bootstrapping and evaluate model performance for Decision Tree
+dt_bootstrap_evaluation(train_data, formula, test_data, n_bootstraps = 100, alpha = 0.05)
+
+```
+
+
+
+
+
+#### **Decision Tree Model Performance with 5-Fold Cross-Validation on held-out fold and Test Data **
+
+The Decision Tree model demonstrates consistent performance across both the held-out set and test data sets. During 5-fold cross-validation, the model achieved an average accuracy of approximately 81.6%, with an average precision of 82.7% and recall of 82.5%. This suggests its ability to accurately classify term deposit subscriptions while maintaining a high proportion of true positive predictions. On the test data, the model yielded similar results, achieving an accuracy of 80.9%, with precision and recall rates of 81.0% and 83.1%, respectively. The F1 score, a balanced measure of precision and recall, stood at approximately 82.0%, indicating robust performance. Additionally, the ROC AUC score on the test data was calculated at 0.84, signifying strong discrimination ability in distinguishing between positive and negative instances. Overall, these findings underscore the reliability and consistency of the Decision Tree model in predicting term deposit subscriptions.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# Function to perform 5-fold cross-validation for Decision Tree
+dt_cv_evaluation <- function(train_data, formula, test_data) {
+  # Define 5-fold cross-validation
+  folds <- vfold_cv(train_data, v = 5)
+  
+  # Initialize matrices to store evaluation metrics for each fold
+  accuracies <- numeric(5)
+  precisions <- numeric(5)
+  recalls <- numeric(5)
+  f1_scores <- numeric(5)
+
+  # Perform 5-fold cross-validation
+  for (i in 1:5) {
+    # Split data into train and test sets for the current fold
+    fold_data <- training(folds$splits[[i]])
+    val_data <- testing(folds$splits[[i]])
+    
+    # Train Decision Tree model
+    dt_model <- rpart(formula, data = fold_data, method = "class")
+    
+    # Predict probabilities on validation data
+    y_pred_prob <- predict(dt_model, newdata = val_data, type = "prob")[, 2]
+    
+    # Compute ROC curve
+    roc_curve <- roc(val_data$deposit, y_pred_prob)
+    
+    # Calculate AUC
+    auc_value <- auc(roc_curve)
+    
+    # Predict on validation data
+    y_pred_val <- ifelse(y_pred_prob > 0.5, "yes", "no")
+    
+    # Calculate evaluation metrics for validation data
+    conf_matrix <- confusionMatrix(data = factor(y_pred_val, levels = levels(val_data$deposit)), 
+                                   reference = val_data$deposit)
+    accuracy <- conf_matrix$overall['Accuracy']
+    precision <- conf_matrix$byClass['Pos Pred Value']
+    recall <- conf_matrix$byClass['Sensitivity']
+    f1_score <- conf_matrix$byClass['F1']
+    
+    # Store evaluation metrics
+    accuracies[i] <- accuracy
+    precisions[i] <- precision
+    recalls[i] <- recall
+    f1_scores[i] <- f1_score
+  }
+  
+  # Calculate average evaluation metrics for validation data
+  avg_accuracy <- mean(accuracies)
+  avg_precision <- mean(precisions)
+  avg_recall <- mean(recalls)
+  avg_f1_score <- mean(f1_scores)
+
+  # Print average evaluation metrics for validation data
+  print("Average Evaluation Metrics of Decision Tree (5-Fold Cross-Validation) on the held-out fold:")
+  print(paste("Average Accuracy:", avg_accuracy))
+  print(paste("Average Precision:", avg_precision))
+  print(paste("Average Recall:", avg_recall))
+  print(paste("Average F1 Score:", avg_f1_score))
+
+  # Train Decision Tree model on the entire training data
+  final_dt_model <- rpart(formula, data = train_data, method = "class")
+  
+  # Predict probabilities on test data
+  y_pred_prob_test <- predict(final_dt_model, newdata = test_data, type = "prob")[, 2]
+  
+  # Predict on test data
+  y_pred_test <- ifelse(y_pred_prob_test > 0.5, "yes", "no")
+  
+  # Calculate evaluation metrics for test data
+  conf_matrix_test <- confusionMatrix(data = factor(y_pred_test, levels = levels(test_data$deposit)), 
+                                      reference = test_data$deposit)
+  
+  # Calculate test accuracy, precision, recall, and F1 score
+  test_accuracy <- conf_matrix_test$overall['Accuracy']
+  test_precision <- conf_matrix_test$byClass['Pos Pred Value']
+  test_recall <- conf_matrix_test$byClass['Sensitivity']
+  test_f1_score <- conf_matrix_test$byClass['F1']
+  
+  # Print evaluation metrics for test data
+  print("Evaluation Metrics of Decision Tree (5-Fold Cross-Validation) on Test Data:")
+  print(paste("Test Accuracy:", test_accuracy))
+  print(paste("Precision:", test_precision))
+  print(paste("Recall:", test_recall))
+  print(paste("F1 Score:", test_f1_score))
+  
+  # Calculate ROC AUC for test data
+  roc_curve_test <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob_test)
+  auc_test <- auc(roc_curve_test)
+  
+  # Print ROC AUC for test data
+  print(paste("ROC AUC for Test Data:", auc_test))
+}
+formula = deposit ~.
+# Call dt_cv_evaluation function with your train data and test data for evaluation
+dt_cv_evaluation(train_data, formula, test_data)
+
+
+```
+
+
+
+
+
+
+## **Performance Evaluation of Statistical Learning Methods**
+
+
+#### **ROC Curve Analysis**
+
+The ROC curve analysis provides insights into the predictive performance of different models for term deposit subscriptions. Random forest emerges as the top-performing model, exhibiting superior discriminative power with a steep curve, leading to higher true positive rates and lower false positive rates. Following closely, logistic regression demonstrates respectable performance, with the support vector machine (SVM) also showing commendable results, slightly surpassing logistic regression. Despite not achieving the highest ROC AUC among the models, the decision tree still performs impressively, showcasing meaningful discriminative power while offering simplicity and interpretability. Overall, the findings suggest that random forest is the optimal choice for term deposit subscription prediction, with SVM presenting a viable alternative for achieving competitive performance.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+# Train Random Forest model
+rf_model <- randomForest(formula, data = train_data, ntree = 500)
+# Predict probabilities on test data
+y_pred_prob_rf <- predict(rf_model, newdata = test_data, type = "prob")
+# Calculate ROC curve for Random Forest
+roc_curve_rf <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob_rf[, "yes"])
+
+# Train Logistic Regression model
+logit_fit <- glm(formula, data = train_data, family = binomial())
+# Predict probabilities on test data
+y_pred_prob_logit <- predict(logit_fit, newdata = test_data, type = "response")
+# Calculate ROC curve for Logistic Regression
+roc_curve_logit <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob_logit)
+
+# Train SVM model
+svm_model <- svm(formula, data = train_data, kernel = "radial", probability = TRUE)
+# Predict probabilities on test data
+y_pred_prob_svm <- attr(predict(svm_model, newdata = test_data, probability = TRUE), "probabilities")[, "yes"]
+# Calculate ROC curve for SVM
+roc_curve_svm <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob_svm)
+
+# Train Decision Tree model
+decision_tree_model <- rpart(formula, data = train_data, method = "class")
+# Predict probabilities on test data
+y_pred_prob_dt <- predict(decision_tree_model, newdata = test_data, type = "prob")[, "yes"]
+# Calculate ROC curve for Decision Tree
+roc_curve_dt <- roc(ifelse(test_data$deposit == "yes", 1, 0), y_pred_prob_dt)
+
+# Smooth Decision Tree ROC curve
+smoothed_roc_curve_dt <- smooth(roc_curve_dt, method = "binormal")
+
+# Plot ROC curves for all models including the smoothed Decision Tree ROC curve
+plot(roc_curve_rf, col = "red", main = "ROC Curves for Random Forest, Logistic Regression, SVM, and Decision Tree")
+plot(roc_curve_logit, col = "blue", add = TRUE)
+plot(roc_curve_svm, col = "green", add = TRUE)
+plot(smoothed_roc_curve_dt, col = "orange", add = TRUE, lwd = 2)  # Adding smoothed Decision Tree ROC curve
+legend("bottomright", legend = c("Random Forest", "Logistic Regression", "SVM", "Decision Tree"), 
+       col = c("red", "blue", "green", "orange"), lty = 1)
+
+
+```
+
+#### **Comparative Analysis of Model Performance on Test Data**
+
+The comparison of model performance on the test data reveals insightful trends. Random Forest emerges as the top-performing model with an accuracy of 85.76%. It demonstrates strong precision (89.88%) and recall (82.03%), resulting in a balanced F1 score of 85.77%. Logistic Regression follows closely with an accuracy of 82.17%. Although its precision (81.45%) is slightly lower than Random Forest, it compensates with a higher recall (85.40%), leading to a respectable F1 score of 83.38%. Support Vector Machine (SVM) exhibits competitive performance, achieving an accuracy of 83.67%. With precision, recall, and F1 score values of 85.39%, 83.02%, and 84.18% respectively, SVM demonstrates robust predictive capabilities. Decision Tree, while not the top performer in terms of accuracy, still shows promising results with an accuracy of 80.95% and balanced precision, recall, and F1 score values of 81.02%, 83.06%, and 82.03% respectively. Overall, while Random Forest excels in overall accuracy and F1 score, Logistic Regression, SVM, and Decision Tree offer strong alternatives with balanced precision and recall rates.
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# Table of accuracies for the models
+# Define formulas
+rf_formula <- deposit ~ .
+logit_formula <- deposit ~ .
+svm_formula <- deposit ~ .
+dt_formula <- deposit ~ .
+
+# Train Random Forest model
+rf_model <- randomForest(rf_formula, data = train_data, ntree = 1000)
+rf_pred_test <- predict(rf_model, newdata = test_data)
+
+# Train Logistic Regression model
+logit_model <- glm(logit_formula, data = train_data, family = "binomial")
+logit_pred_prob <- predict(logit_model, newdata = test_data, type = "response")
+logit_pred <- ifelse(logit_pred_prob > 0.5, "yes", "no")
+
+# Train SVM model
+svm_model <- svm(svm_formula, data = train_data, kernel = "radial", probability = TRUE)
+svm_pred <- predict(svm_model, newdata = test_data)
+
+# Train Decision Tree model
+dt_model <- rpart(dt_formula, data = train_data, method = "class")
+dt_pred_test <- predict(dt_model, newdata = test_data, type = "class")
+
+# Calculate evaluation metrics
+rf_conf_matrix <- confusionMatrix(data = rf_pred_test, reference = test_data$deposit)
+logit_conf_matrix <- confusionMatrix(data = factor(logit_pred, levels = c("yes", "no")), reference = test_data$deposit)
+svm_conf_matrix <- confusionMatrix(data = factor(svm_pred, levels = c("yes", "no")), reference = test_data$deposit)
+dt_conf_matrix <- confusionMatrix(data = dt_pred_test, reference = test_data$deposit)
+
+rf_accuracy <- rf_conf_matrix$overall['Accuracy']
+logit_accuracy <- logit_conf_matrix$overall['Accuracy']
+svm_accuracy <- svm_conf_matrix$overall['Accuracy']
+dt_accuracy <- dt_conf_matrix$overall['Accuracy']
+
+rf_precision <- rf_conf_matrix$byClass['Pos Pred Value']
+rf_recall <- rf_conf_matrix$byClass['Sensitivity']
+rf_f1_score <- rf_conf_matrix$byClass['F1']
+
+logit_precision <- logit_conf_matrix$byClass['Pos Pred Value']
+logit_recall <- logit_conf_matrix$byClass['Sensitivity']
+logit_f1_score <- logit_conf_matrix$byClass['F1']
+
+svm_precision <- svm_conf_matrix$byClass['Pos Pred Value']
+svm_recall <- svm_conf_matrix$byClass['Sensitivity']
+svm_f1_score <- svm_conf_matrix$byClass['F1']
+
+dt_precision <- dt_conf_matrix$byClass['Pos Pred Value']
+dt_recall <- dt_conf_matrix$byClass['Sensitivity']
+dt_f1_score <- dt_conf_matrix$byClass['F1']
+
+# Create a table
+model_names <- c("Random Forest", "Logistic Regression", "Support Vector Machine", "Decision Tree")
+accuracy_values <- c(rf_accuracy, logit_accuracy, svm_accuracy, dt_accuracy)
+precision_values <- c(rf_precision, logit_precision, svm_precision, dt_precision)
+recall_values <- c(rf_recall, logit_recall, svm_recall, dt_recall)
+f1_score_values <- c(rf_f1_score, logit_f1_score, svm_f1_score, dt_f1_score)
+
+evaluation_table <- data.frame(Model = model_names,
+                                Accuracy = accuracy_values,
+                                Precision = precision_values,
+                                Recall = recall_values,
+                                F1_Score = f1_score_values)
+
+# Print the table
+print("Evaluation Metrics on Test Data:")
+print(evaluation_table)
+
+```
+
+
+## **Conclusion : Elevating Marketing Strategies for Optimal Results**
+
+**Strategic Solutions for Enhanced Marketing Campaigns**
+
+In the pursuit of optimizing subscription rates, strategic insights gleaned from demographic profiles, financial behaviors, campaign nuances, contact methodologies, and engagement dynamics unveil pathways to success:
+
+**Demographic Insights**: Retirees and students have higher subscription rates, while married individuals subscribe less. Tertiary-educated clients are more likely to subscribe.
+
+
+**Financial Status**: Clients with no defaults or personal loans are more likely to subscribe. Absence of housing loans correlates with higher subscription rates.
+
+
+**Campaign Specifics**: Successful past campaigns increase subscription likelihood. Timing of campaigns, particularly in March, December, and October, affects subscription rates.
+
+
+**Contact Method and Timing**: Cellular communication and specific months like March, December, and October influence subscription decisions.
+
+
+**Engagement Dynamics**: Longer and more frequent contacts lead to higher subscription rates, emphasizing the importance of consistent outreach.
+
+By integrating these strategic insights into marketing initiatives, financial institutions can orchestrate targeted and impactful campaigns, thereby maximizing subscription rates and nurturing enduring customer relationships.
+
+
+**Scope and Generalizability**
+
+The predictive analysis undertaken unveils significant insights into the determinants of customer subscription behavior regarding term deposits. Leveraging advanced statistical learning methods like Random Forest, Logistic Regression, Support Vector Machines and Decision tree, alongside meticulous feature engineering and comprehensive performance evaluation, a deep comprehension of the predictive task and model performance has been achieved. This analysis extends its implications beyond the confines of the dataset, offering insights applicable to a spectrum of marketing strategies and customer engagement initiatives within financial institutions. Through the integration of cross-validation and bootstrapping techniques, the models' performance metrics are reinforced and proven robust across various subsets of data, enhancing their suitability for real-world applications. This ensures the reliability of the identified predictive patterns, which can be extrapolated to similar datasets and contexts. Overall, the analysis provides a solid foundation for optimizing marketing strategies and fostering enduring customer relationships in the financial sector.
+
+
+**Limitations and Possibilities for Improvement**
+
+Acknowledging inherent limitations is crucial. The dataset's sampling methodology and biases, including sampling and temporal bias, may impede the generalizability of findings. Relying solely on telecommunication-based marketing data might neglect other impactful factors influencing customer behavior. Despite endeavors to address feature engineering and model selection, unexplored variables or interactions may yet exist, potentially enhancing predictive performance. To surmount these limitations and enrich the analysis, various avenues for improvement can be explored. Integrating additional datasets or information sources, such as transaction data or socioeconomic indicators, could furnish a more comprehensive understanding of customer behavior. Furthermore, delving into ensemble models or deep learning architectures might unveil intricate data patterns, leading to augmented predictive efficacy. In conclusion, while the analysis yields invaluable insights, continuous refinement and innovation are imperative for surmounting limitations and ensuring the real-world applicability of findings. By persistently enhancing methodologies and integrating diverse data sources, financial institutions can refine marketing strategies and cultivate enduring customer relationships with efficacy.
+
