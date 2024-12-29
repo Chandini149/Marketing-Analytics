@@ -54,6 +54,3 @@ This project applies advanced statistical learning techniques to predict custome
 - 🌐 Integrate additional data sources (e.g., socioeconomic indicators).  
 - 🤖 Explore ensemble models and deep learning architectures.  
 - ⚖️ Address dataset biases and enhance feature engineering.
-
-🤝 **Acknowledgments**  
-Developed by Chandini Karrothu as part of the **Statistical Learning** course at Kent State University. Inspired by practical applications of data science to optimize marketing strategies in the financial sector.  
